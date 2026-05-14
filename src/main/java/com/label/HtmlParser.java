@@ -194,10 +194,12 @@ public class HtmlParser {
     private static void parseRecipient(WaybillData data, String text) {
         String[] lines = text.split("\\n");
         if (lines.length == 1) {
-            data.recipientInfo = lines[0].trim();
+            // 对姓名和手机号进行脱敏
+            data.recipientInfo = PrivacyMasker.maskNameAndPhone(lines[0].trim());
             return;
         }
-        data.recipientInfo = lines[0].trim();
+        // 对姓名和手机号进行脱敏
+        data.recipientInfo = PrivacyMasker.maskNameAndPhone(lines[0].trim());
         StringBuilder addr = new StringBuilder();
         for (int i = 1; i < lines.length; i++) {
             if (addr.length() > 0) addr.append('\n');
@@ -209,10 +211,10 @@ public class HtmlParser {
     private static void parseSender(WaybillData data, String text) {
         String[] lines = text.split("\\n");
         if (lines.length == 1) {
-            data.senderInfo = lines[0].trim();
+            data.senderInfo = PrivacyMasker.maskNameAndPhone(lines[0].trim());
             return;
         }
-        data.senderInfo = lines[0].trim();
+        data.senderInfo = PrivacyMasker.maskNameAndPhone(lines[0].trim());
         StringBuilder addr = new StringBuilder();
         for (int i = 1; i < lines.length; i++) {
             if (addr.length() > 0) addr.append('\n');

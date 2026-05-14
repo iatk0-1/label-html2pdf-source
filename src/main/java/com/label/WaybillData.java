@@ -14,6 +14,7 @@ public class WaybillData {
     public String senderAddr;       // city + district + detail address
     public String codLabel;         // "货到付款" or similar
     public String verifiedStamp;    // "已验视"
+    public String productInfo;      // 商品信息（格式：商品名称 * 数量）
 
     public byte[] logoImage;
     public byte[] barcodeImage;
@@ -22,8 +23,10 @@ public class WaybillData {
     public byte[] icon1Image;
     public byte[] icon2Image;  // right-side image in same row
 
+    public Long id;               // 数据库ID（用于标记已打印）
     public String sourceFile;
     public String printHtml;  // 微信返回的面单HTML（base64编码）
+    public String lastPrintedAt;  // 最后一次打印时间（null 表示未打印）
 
     public static class ImageInfo {
         public byte[] data;

@@ -31,6 +31,8 @@ public class MainController {
     @FXML private TableColumn<WaybillItem, String> waybillCol;
     @FXML private TableColumn<WaybillItem, String> recipientCol;
     @FXML private TableColumn<WaybillItem, String> addressCol;
+    @FXML private TableColumn<WaybillItem, String> lastGenTimeCol;
+    @FXML private Button btnSelectUnprinted;
     @FXML private TextArea logArea;
 
     // === Print tab ===
@@ -61,6 +63,7 @@ public class MainController {
         waybillCol.setCellValueFactory(cellData -> cellData.getValue().waybillIdProperty());
         recipientCol.setCellValueFactory(cellData -> cellData.getValue().recipientNameProperty());
         addressCol.setCellValueFactory(cellData -> cellData.getValue().recipientAddressProperty());
+        lastGenTimeCol.setCellValueFactory(cellData -> cellData.getValue().lastGenTimeProperty());
         waybillTable.setItems(waybillItems);
 
         // Print tab: bind table columns
@@ -159,6 +162,10 @@ public class MainController {
                         try {
                             WaybillData parsedData = HtmlParser.parse(tmpFile.toFile());
                             parsedData.sourceFile = data.sourceFile;
+                            parsedData.productInfo = data.productInfo;
+                            // 使用 API 返回的脱敏数据覆盖 HTML 解析结果
+                            parsedData.recipientInfo = data.recipientInfo;
+                            parsedData.senderInfo = data.senderInfo;
 
                             String filename = item.getWaybillId().replaceAll("[\\\\/:*?\"<>|]", "_") + ".pdf";
                             File pdfFile = new File(outputDir, filename);
@@ -169,7 +176,23 @@ public class MainController {
                             if (hasContent) {
                                 generator.generate(parsedData, pdfFile);
                             } else {
-                                generator.generateFromHtml(tmpFile.toFile(), pdfFile);
+                                generator.generateFromHtml(tmpFile.toFile(), pdfFile, data.productInfo);
+                            }
+
+                            // 标记已生成
+                            if (item.getWaybillDataId() != null) {
+                                try {
+                                    apiClient.markPrinted(item.getWaybillDataId());
+                                    Platform.runLater(() -> item.markPrinted());
+                                } catch (Exception ex) {
+                                    Platform.runLater(() ->
+                                        logArea.appendText("⚠ 标记已生成失败 (id=" + item.getWaybillDataId() + "): " + ex.getMessage() + "\n")
+                                    );
+                                }
+                            } else {
+                                Platform.runLater(() ->
+                                    logArea.appendText("⚠ 无法标记已生成：waybillDataId 为空 (" + item.getWaybillId() + ")\n")
+                                );
                             }
 
                             Platform.runLater(() ->
@@ -219,6 +242,11 @@ public class MainController {
     @FXML
     private void onDeselectAll() {
         waybillItems.forEach(i -> i.setSelected(false));
+    }
+
+    @FXML
+    private void onSelectUnprinted() {
+        waybillItems.forEach(i -> i.setSelected("-".equals(i.getLastGenTime())));
     }
 
     // ==================== Print ====================

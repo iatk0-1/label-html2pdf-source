@@ -170,13 +170,19 @@ public class PdfGenerator {
                     Element.ALIGN_CENTER);
         }
 
+        // Product info at bottom (商品信息显示在面单最下方)
+        if (data.productInfo != null && !data.productInfo.isEmpty()) {
+            addText(cb, data.productInfo, bf, 10.90, 820, 584.26, 0, 18,
+                    Element.ALIGN_LEFT);
+        }
+
         document.close();
     }
 
     /**
      * 直接用 HTML 渲染为 PDF（适用于微信 print_html 等无法被 HtmlParser 解析的 HTML）
      */
-    public void generateFromHtml(File htmlFile, File outputFile) throws IOException, DocumentException {
+    public void generateFromHtml(File htmlFile, File outputFile, String productInfo) throws IOException, DocumentException {
         String html = new String(Files.readAllBytes(htmlFile.toPath()), StandardCharsets.UTF_8);
 
         Rectangle pageSize = new Rectangle(pageW, pageH);
@@ -195,6 +201,13 @@ public class PdfGenerator {
         HTMLWorker htmlWorker = new HTMLWorker(document);
         htmlWorker.setStyleSheet(styles);
         htmlWorker.parse(new StringReader(html));
+
+        // 在面单最下方空白处渲染商品信息
+        if (productInfo != null && !productInfo.isEmpty()) {
+            PdfContentByte cb = writer.getDirectContent();
+            addText(cb, productInfo, bf, 10.90, 820, 584.26, 0, 18,
+                    Element.ALIGN_LEFT);
+        }
 
         document.close();
     }

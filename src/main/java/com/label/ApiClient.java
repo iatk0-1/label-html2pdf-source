@@ -93,12 +93,61 @@ public class ApiClient {
      */
     private WaybillData mapToWaybillData(Map<String, Object> map) {
         WaybillData data = new WaybillData();
+        Object idObj = map.get("id");
+        if (idObj != null) data.id = Long.parseLong(idObj.toString());
         data.trackingNumber = (String) map.get("waybillId");
         data.printHtml = (String) map.get("printHtml");
-        data.recipientInfo = (String) map.get("recipientName");
+
+        // 对收件人姓名和手机号进行脱敏
+        String recipientName = (String) map.get("recipientName");
+        String recipientPhone = (String) map.get("recipientPhone");
+        if (recipientName != null && recipientPhone != null) {
+            data.recipientInfo = PrivacyMasker.maskName(recipientName) + " " + PrivacyMasker.maskPhone(recipientPhone);
+        } else if (recipientName != null) {
+            data.recipientInfo = PrivacyMasker.maskName(recipientName);
+        } else if (recipientPhone != null) {
+            data.recipientInfo = PrivacyMasker.maskPhone(recipientPhone);
+        }
+
+        // 对发件人手机号脱敏（姓名不脱敏）
+        String senderName = (String) map.get("senderName");
+        String senderPhone = (String) map.get("senderPhone");
+        if (senderName != null && senderPhone != null) {
+            data.senderInfo = senderName + " " + PrivacyMasker.maskPhone(senderPhone);
+        } else if (senderName != null) {
+            data.senderInfo = senderName;
+        } else if (senderPhone != null) {
+            data.senderInfo = PrivacyMasker.maskPhone(senderPhone);
+        }
+
         data.recipientAddr = (String) map.get("recipientAddress");
+        data.senderAddr = (String) map.get("senderAddress");
+        data.productInfo = (String) map.get("productInfo");
+        // 读取打印时间
+        Object lastPrinted = map.get("lastPrintedAt");
+        data.lastPrintedAt = lastPrinted != null ? String.valueOf(lastPrinted) : null;
+
         data.sourceFile = "API-" + map.get("waybillId");
         return data;
+    }
+
+    /**
+     * 标记运单已打印
+     */
+    public void markPrinted(Long waybillDataId) throws IOException, InterruptedException {
+        String url = baseUrl + "/api/v1/waybills/" + waybillDataId + "/mark-printed";
+
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(url))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.noBody())
+                .build();
+
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+
+        if (response.statusCode() != 204) {
+            throw new IOException("标记已打印失败：HTTP " + response.statusCode());
+        }
     }
 
     public Long getUserId() {
