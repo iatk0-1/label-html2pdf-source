@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.control.cell.CheckBoxTableCell?>
+<?import javafx.scene.layout.*?>
+
+<VBox xmlns="http://javafx.com/javafx" xmlns:fx="http://javafx.com/fxml"
+      fx:controller="com.label.MainController"
+      spacing="0" styleClass="root">
+
+    <TabPane fx:id="tabPane" tabClosingPolicy="UNAVAILABLE" VBox.vgrow="ALWAYS">
+
+        <!-- Tab 1: 拉取面单 -->
+        <Tab text="拉取面单">
+            <VBox spacing="12" styleClass="tab-content">
+                <padding><Insets top="16" right="16" bottom="16" left="16"/></padding>
+
+                <Label text="拉取面单数据" styleClass="title"/>
+
+                <!-- Fetch + Generate buttons -->
+                <HBox spacing="10" alignment="CENTER_LEFT">
+                    <Button fx:id="btnFetch" text="拉取面单" onAction="#onFetch" styleClass="btn-primary"/>
+                    <Button fx:id="btnGenerate" text="生成PDF" onAction="#onGenerate" disable="true" styleClass="btn-accent"/>
+                    <Region HBox.hgrow="ALWAYS"/>
+                    <Label fx:id="fetchStatusLabel" styleClass="status-label"/>
+                </HBox>
+
+                <ProgressBar fx:id="progressBar" visible="false" prefWidth="99999"/>
+
+                <!-- Waybill table -->
+                <TableView fx:id="waybillTable" editable="true" VBox.vgrow="ALWAYS">
+                    <columns>
+                        <TableColumn fx:id="selectCol" text="选择" prefWidth="50" editable="true"/>
+                        <TableColumn fx:id="waybillCol" text="运单号" prefWidth="180"/>
+                        <TableColumn fx:id="recipientCol" text="收件人" prefWidth="120"/>
+                        <TableColumn fx:id="addressCol" text="收件地址" prefWidth="300"/>
+                    </columns>
+                </TableView>
+
+                <HBox spacing="10" alignment="CENTER_LEFT">
+                    <Button text="全选" onAction="#onSelectAll"/>
+                    <Button text="取消全选" onAction="#onDeselectAll"/>
+                </HBox>
+
+                <!-- Log output -->
+                <TextArea fx:id="logArea" editable="false" prefHeight="120" styleClass="log-area"/>
+            </VBox>
+        </Tab>
+
+        <!-- Tab 2: 打印 -->
+        <Tab text="打印">
+            <VBox spacing="12" styleClass="tab-content">
+                <padding><Insets top="16" right="16" bottom="16" left="16"/></padding>
+
+                <Label text="批量打印 PDF" styleClass="title"/>
+
+                <HBox spacing="10" alignment="CENTER_LEFT">
+                    <Label text="打印机:"/>
+                    <ComboBox fx:id="printerComboBox" prefWidth="400"/>
+                </HBox>
+
+                <HBox spacing="10" alignment="CENTER_LEFT">
+                    <Button fx:id="btnSelectPrintFolder" text="选择文件夹" onAction="#onSelectPrintFolder"/>
+                    <Label fx:id="printFolderLabel" text="未选择文件夹" styleClass="sub-label"/>
+                </HBox>
+
+                <TableView fx:id="pdfTable" editable="true" VBox.vgrow="ALWAYS">
+                    <columns>
+                        <TableColumn fx:id="pdfSelectCol" text="选择" prefWidth="50" editable="true"/>
+                        <TableColumn fx:id="pdfNameCol" text="文件名" prefWidth="560"/>
+                    </columns>
+                </TableView>
+
+                <HBox spacing="10" alignment="CENTER_LEFT">
+                    <Button text="全选" onAction="#onPdfSelectAll"/>
+                    <Button text="取消全选" onAction="#onPdfDeselectAll"/>
+                    <Region HBox.hgrow="ALWAYS"/>
+                    <Button fx:id="btnPrint" text="打印选中的文件" onAction="#onPrint" styleClass="btn-accent"/>
+                </HBox>
+            </VBox>
+        </Tab>
+
+    </TabPane>
+</VBox>
