@@ -123,7 +123,11 @@ public class ApiClient {
         data.recipientAddr = (String) map.get("recipientAddress");
         data.senderAddr = (String) map.get("senderAddress");
         data.productInfo = (String) map.get("productInfo");
-        // 读取打印时间
+        // 读取时间字段
+        Object waybillCreated = map.get("createdAt");
+        data.waybillCreatedAt = waybillCreated != null ? String.valueOf(waybillCreated) : null;
+        Object orderCreated = map.get("orderCreatedAt");
+        data.orderCreatedAt = orderCreated != null ? String.valueOf(orderCreated) : null;
         Object lastPrinted = map.get("lastPrintedAt");
         data.lastPrintedAt = lastPrinted != null ? String.valueOf(lastPrinted) : null;
 

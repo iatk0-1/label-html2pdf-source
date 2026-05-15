@@ -63,7 +63,7 @@ public class MainApp extends Application {
             controller.setApiClient(loginCtrl.getApiClient());
 
             stage.setTitle("快递面单打印系统");
-            Scene scene = new Scene(root, 780, 620);
+            Scene scene = new Scene(root, 950, 700);
             scene.getStylesheets().add(getClass().getResource("style.css").toExternalForm());
             stage.setScene(scene);
             stage.show();

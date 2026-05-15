@@ -15,6 +15,9 @@ import java.io.File;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
@@ -31,9 +34,23 @@ public class MainController {
     @FXML private TableColumn<WaybillItem, String> waybillCol;
     @FXML private TableColumn<WaybillItem, String> recipientCol;
     @FXML private TableColumn<WaybillItem, String> addressCol;
+    @FXML private TableColumn<WaybillItem, String> waybillCreatedTimeCol;
+    @FXML private TableColumn<WaybillItem, String> orderCreatedTimeCol;
     @FXML private TableColumn<WaybillItem, String> lastGenTimeCol;
     @FXML private Button btnSelectUnprinted;
     @FXML private TextArea logArea;
+    @FXML private DatePicker waybillDateFrom;
+    @FXML private ComboBox<String> waybillHourFrom;
+    @FXML private ComboBox<String> waybillMinuteFrom;
+    @FXML private DatePicker waybillDateTo;
+    @FXML private ComboBox<String> waybillHourTo;
+    @FXML private ComboBox<String> waybillMinuteTo;
+    @FXML private DatePicker orderDateFrom;
+    @FXML private ComboBox<String> orderHourFrom;
+    @FXML private ComboBox<String> orderMinuteFrom;
+    @FXML private DatePicker orderDateTo;
+    @FXML private ComboBox<String> orderHourTo;
+    @FXML private ComboBox<String> orderMinuteTo;
 
     // === Print tab ===
     @FXML private ComboBox<String> printerComboBox;
@@ -48,6 +65,7 @@ public class MainController {
 
     private ApiClient apiClient;
     private final ObservableList<WaybillItem> waybillItems = FXCollections.observableArrayList();
+    private final List<WaybillItem> allItems = new ArrayList<>();
     private final ObservableList<PdfFileItem> pdfItems = FXCollections.observableArrayList();
     private File selectedPrintFolder;
 
@@ -57,22 +75,41 @@ public class MainController {
 
     @FXML
     public void initialize() {
-        // Fetch tab: bind table columns
         selectCol.setCellValueFactory(cellData -> cellData.getValue().selectedProperty());
         selectCol.setCellFactory(CheckBoxTableCell.forTableColumn(selectCol));
         waybillCol.setCellValueFactory(cellData -> cellData.getValue().waybillIdProperty());
         recipientCol.setCellValueFactory(cellData -> cellData.getValue().recipientNameProperty());
         addressCol.setCellValueFactory(cellData -> cellData.getValue().recipientAddressProperty());
+        waybillCreatedTimeCol.setCellValueFactory(cellData -> cellData.getValue().waybillCreatedTimeProperty());
+        orderCreatedTimeCol.setCellValueFactory(cellData -> cellData.getValue().orderCreatedTimeProperty());
         lastGenTimeCol.setCellValueFactory(cellData -> cellData.getValue().lastGenTimeProperty());
         waybillTable.setItems(waybillItems);
 
-        // Print tab: bind table columns
         pdfSelectCol.setCellValueFactory(cellData -> cellData.getValue().selectedProperty());
         pdfSelectCol.setCellFactory(CheckBoxTableCell.forTableColumn(pdfSelectCol));
         pdfNameCol.setCellValueFactory(cellData -> cellData.getValue().nameProperty());
         pdfTable.setItems(pdfItems);
 
         loadPrinters();
+        initTimeCombos();
+    }
+
+    private void initTimeCombos() {
+        List<String> hours = new ArrayList<>();
+        List<String> minutes = new ArrayList<>();
+        for (int i = 0; i < 24; i++) hours.add(String.format("%02d", i));
+        for (int i = 0; i < 60; i++) minutes.add(String.format("%02d", i));
+
+        for (ComboBox<String> cb : new ComboBox[]{waybillHourFrom, waybillHourTo, orderHourFrom, orderHourTo}) {
+            cb.getItems().addAll(hours);
+            cb.setValue("00");
+            cb.setVisibleRowCount(12);
+        }
+        for (ComboBox<String> cb : new ComboBox[]{waybillMinuteFrom, waybillMinuteTo, orderMinuteFrom, orderMinuteTo}) {
+            cb.getItems().addAll(minutes);
+            cb.setValue("00");
+            cb.setVisibleRowCount(12);
+        }
     }
 
     // ==================== Fetch ====================
@@ -96,9 +133,12 @@ public class MainController {
             List<WaybillData> list = task.getValue();
             fetchStatusLabel.setText("拉取成功，共 " + list.size() + " 条面单数据");
 
+            allItems.clear();
             for (WaybillData wd : list) {
-                waybillItems.add(new WaybillItem(wd));
+                allItems.add(new WaybillItem(wd));
             }
+
+            applyFilter();
 
             btnGenerate.setDisable(list.isEmpty());
             btnFetch.setDisable(false);
@@ -163,7 +203,6 @@ public class MainController {
                             WaybillData parsedData = HtmlParser.parse(tmpFile.toFile());
                             parsedData.sourceFile = data.sourceFile;
                             parsedData.productInfo = data.productInfo;
-                            // 使用 API 返回的脱敏数据覆盖 HTML 解析结果
                             parsedData.recipientInfo = data.recipientInfo;
                             parsedData.senderInfo = data.senderInfo;
 
@@ -179,7 +218,6 @@ public class MainController {
                                 generator.generateFromHtml(tmpFile.toFile(), pdfFile, data.productInfo);
                             }
 
-                            // 标记已生成
                             if (item.getWaybillDataId() != null) {
                                 try {
                                     apiClient.markPrinted(item.getWaybillDataId());
@@ -247,6 +285,59 @@ public class MainController {
     @FXML
     private void onSelectUnprinted() {
         waybillItems.forEach(i -> i.setSelected("-".equals(i.getLastGenTime())));
+    }
+
+    @FXML
+    private void onFilter() {
+        applyFilter();
+    }
+
+    @FXML
+    private void onClearFilter() {
+        waybillDateFrom.setValue(null);
+        waybillHourFrom.setValue(null);
+        waybillMinuteFrom.setValue(null);
+        waybillDateTo.setValue(null);
+        waybillHourTo.setValue(null);
+        waybillMinuteTo.setValue(null);
+        orderDateFrom.setValue(null);
+        orderHourFrom.setValue(null);
+        orderMinuteFrom.setValue(null);
+        orderDateTo.setValue(null);
+        orderHourTo.setValue(null);
+        orderMinuteTo.setValue(null);
+        applyFilter();
+    }
+
+    private void applyFilter() {
+        LocalDateTime wdFrom = combineDateTime(waybillDateFrom.getValue(), waybillHourFrom.getValue(), waybillMinuteFrom.getValue());
+        LocalDateTime wdTo = combineDateTime(waybillDateTo.getValue(), waybillHourTo.getValue(), waybillMinuteTo.getValue());
+        LocalDateTime odFrom = combineDateTime(orderDateFrom.getValue(), orderHourFrom.getValue(), orderMinuteFrom.getValue());
+        LocalDateTime odTo = combineDateTime(orderDateTo.getValue(), orderHourTo.getValue(), orderMinuteTo.getValue());
+
+        waybillItems.clear();
+        for (WaybillItem item : allItems) {
+            if (!matchDateTimeRange(item.getWaybillCreatedDateTime(), wdFrom, wdTo)) continue;
+            if (!matchDateTimeRange(item.getOrderCreatedDateTime(), odFrom, odTo)) continue;
+            waybillItems.add(item);
+        }
+        fetchStatusLabel.setText("显示 " + waybillItems.size() + " / " + allItems.size() + " 条");
+    }
+
+    /** 将 DatePicker + 时/分 ComboBox 合并为 LocalDateTime。未选日期返回 null。 */
+    private static LocalDateTime combineDateTime(LocalDate date, String hour, String minute) {
+        if (date == null) return null;
+        int h = hour != null ? Integer.parseInt(hour) : 0;
+        int m = minute != null ? Integer.parseInt(minute) : 0;
+        return LocalDateTime.of(date, LocalTime.of(h, m, 0));
+    }
+
+    private static boolean matchDateTimeRange(LocalDateTime value, LocalDateTime from, LocalDateTime to) {
+        if (from == null && to == null) return true;
+        if (value == null) return false;
+        if (from != null && value.isBefore(from)) return false;
+        if (to != null && value.isAfter(to)) return false;
+        return true;
     }
 
     // ==================== Print ====================

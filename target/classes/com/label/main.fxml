@@ -26,6 +26,31 @@
                     <Label fx:id="fetchStatusLabel" styleClass="status-label"/>
                 </HBox>
 
+                <!-- 时间筛选：第一行 — 面单创建时间 -->
+                <HBox spacing="8" alignment="CENTER_LEFT">
+                    <Label text="面单创建:"/>
+                    <DatePicker fx:id="waybillDateFrom" prefWidth="120"/>
+                    <ComboBox fx:id="waybillHourFrom" prefWidth="80"/>
+                    <ComboBox fx:id="waybillMinuteFrom" prefWidth="80"/>
+                    <Label text="至"/>
+                    <DatePicker fx:id="waybillDateTo" prefWidth="120"/>
+                    <ComboBox fx:id="waybillHourTo" prefWidth="80"/>
+                    <ComboBox fx:id="waybillMinuteTo" prefWidth="80"/>
+                </HBox>
+                <!-- 时间筛选：第二行 — 订单创建时间 -->
+                <HBox spacing="8" alignment="CENTER_LEFT">
+                    <Label text="订单创建:"/>
+                    <DatePicker fx:id="orderDateFrom" prefWidth="120"/>
+                    <ComboBox fx:id="orderHourFrom" prefWidth="80"/>
+                    <ComboBox fx:id="orderMinuteFrom" prefWidth="80"/>
+                    <Label text="至"/>
+                    <DatePicker fx:id="orderDateTo" prefWidth="120"/>
+                    <ComboBox fx:id="orderHourTo" prefWidth="80"/>
+                    <ComboBox fx:id="orderMinuteTo" prefWidth="80"/>
+                    <Button text="筛选" onAction="#onFilter" styleClass="btn-primary"/>
+                    <Button text="清除" onAction="#onClearFilter"/>
+                </HBox>
+
                 <ProgressBar fx:id="progressBar" visible="false" prefWidth="99999"/>
 
                 <!-- Waybill table -->
@@ -34,8 +59,10 @@
                         <TableColumn fx:id="selectCol" text="选择" prefWidth="50" editable="true"/>
                         <TableColumn fx:id="waybillCol" text="运单号" prefWidth="160"/>
                         <TableColumn fx:id="recipientCol" text="收件人" prefWidth="100"/>
-                        <TableColumn fx:id="addressCol" text="收件地址" prefWidth="260"/>
-                        <TableColumn fx:id="lastGenTimeCol" text="上次生成" prefWidth="110"/>
+                        <TableColumn fx:id="addressCol" text="收件地址" prefWidth="200"/>
+                        <TableColumn fx:id="waybillCreatedTimeCol" text="面单创建" prefWidth="110"/>
+                        <TableColumn fx:id="orderCreatedTimeCol" text="订单创建" prefWidth="110"/>
+                        <TableColumn fx:id="lastGenTimeCol" text="上次生成PDF" prefWidth="110"/>
                     </columns>
                 </TableView>
 

@@ -26,7 +26,9 @@ public class WaybillData {
     public Long id;               // 数据库ID（用于标记已打印）
     public String sourceFile;
     public String printHtml;  // 微信返回的面单HTML（base64编码）
-    public String lastPrintedAt;  // 最后一次打印时间（null 表示未打印）
+    public String waybillCreatedAt;  // 面单创建时间（null 表示无）
+    public String orderCreatedAt;    // 订单创建时间（null 表示无）
+    public String lastPrintedAt;     // 上次生成PDF时间（null 表示未打印）
 
     public static class ImageInfo {
         public byte[] data;
