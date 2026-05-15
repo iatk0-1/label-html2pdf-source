@@ -136,12 +136,9 @@ public class PrivacyMasker {
     }
 
     /**
-     * 发件人信息脱敏：姓名不脱敏，仅手机号脱敏
+     * 发件人信息脱敏：姓名和手机号都脱敏
      */
     public static String maskSenderInfo(String info) {
-        if (info == null || info.isEmpty()) return info;
-        String[] parts = info.split("\\s+", 2);
-        if (parts.length <= 1) return info;
-        return parts[0] + " " + maskPhone(parts[1]);
+        return maskNameAndPhone(info);
     }
 }
