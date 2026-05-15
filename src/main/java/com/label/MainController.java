@@ -203,8 +203,9 @@ public class MainController {
                             WaybillData parsedData = HtmlParser.parse(tmpFile.toFile());
                             parsedData.sourceFile = data.sourceFile;
                             parsedData.productInfo = data.productInfo;
-                            parsedData.recipientInfo = data.recipientInfo;
-                            parsedData.senderInfo = data.senderInfo;
+                            // PDF 中脱敏，表格显示不脱敏
+                            parsedData.recipientInfo = PrivacyMasker.maskRecipientInfo(data.recipientInfo);
+                            parsedData.senderInfo = PrivacyMasker.maskSenderInfo(data.senderInfo);
 
                             String filename = item.getWaybillId().replaceAll("[\\\\/:*?\"<>|]", "_") + ".pdf";
                             File pdfFile = new File(outputDir, filename);

@@ -98,27 +98,14 @@ public class ApiClient {
         data.trackingNumber = (String) map.get("waybillId");
         data.printHtml = (String) map.get("printHtml");
 
-        // 对收件人姓名和手机号进行脱敏
+        // 表格展示不脱敏，原始数据直接显示
         String recipientName = (String) map.get("recipientName");
         String recipientPhone = (String) map.get("recipientPhone");
-        if (recipientName != null && recipientPhone != null) {
-            data.recipientInfo = PrivacyMasker.maskName(recipientName) + " " + PrivacyMasker.maskPhone(recipientPhone);
-        } else if (recipientName != null) {
-            data.recipientInfo = PrivacyMasker.maskName(recipientName);
-        } else if (recipientPhone != null) {
-            data.recipientInfo = PrivacyMasker.maskPhone(recipientPhone);
-        }
+        data.recipientInfo = buildInfo(recipientName, recipientPhone);
 
-        // 对发件人手机号脱敏（姓名不脱敏）
         String senderName = (String) map.get("senderName");
         String senderPhone = (String) map.get("senderPhone");
-        if (senderName != null && senderPhone != null) {
-            data.senderInfo = senderName + " " + PrivacyMasker.maskPhone(senderPhone);
-        } else if (senderName != null) {
-            data.senderInfo = senderName;
-        } else if (senderPhone != null) {
-            data.senderInfo = PrivacyMasker.maskPhone(senderPhone);
-        }
+        data.senderInfo = buildInfo(senderName, senderPhone);
 
         data.recipientAddr = (String) map.get("recipientAddress");
         data.senderAddr = (String) map.get("senderAddress");
@@ -133,6 +120,13 @@ public class ApiClient {
 
         data.sourceFile = "API-" + map.get("waybillId");
         return data;
+    }
+
+    private static String buildInfo(String name, String phone) {
+        if (name != null && phone != null) return name + " " + phone;
+        if (name != null) return name;
+        if (phone != null) return phone;
+        return "";
     }
 
     /**
