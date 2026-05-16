@@ -5,6 +5,10 @@ import com.itextpdf.text.pdf.*;
 import com.itextpdf.text.html.simpleparser.HTMLWorker;
 import com.itextpdf.text.html.simpleparser.StyleSheet;
 
+import javax.imageio.ImageIO;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -92,7 +96,7 @@ public class PdfGenerator {
         // Draw all images
         for (WaybillData.ImageInfo img : data.images) {
             try {
-                com.itextpdf.text.Image pdfImg = com.itextpdf.text.Image.getInstance(img.data);
+                com.itextpdf.text.Image pdfImg = com.itextpdf.text.Image.getInstance(toBlackAndWhiteImage(img.data));
                 float x = tx(img.left);
                 float y = ty(img.top + img.height); // bottom of image
                 float w = sw(img.width);
@@ -248,6 +252,40 @@ public class PdfGenerator {
             } catch (Exception ignored) {}
         }
         return BaseFont.createFont(BaseFont.HELVETICA, BaseFont.CP1252, BaseFont.NOT_EMBEDDED);
+    }
+
+    private static byte[] toBlackAndWhiteImage(byte[] imageData) throws IOException {
+        BufferedImage source = ImageIO.read(new ByteArrayInputStream(imageData));
+        if (source == null) {
+            return imageData;
+        }
+
+        BufferedImage binary = new BufferedImage(
+                source.getWidth(), source.getHeight(), BufferedImage.TYPE_BYTE_BINARY);
+        for (int y = 0; y < source.getHeight(); y++) {
+            for (int x = 0; x < source.getWidth(); x++) {
+                int argb = source.getRGB(x, y);
+                int alpha = (argb >>> 24) & 0xff;
+                int red = (argb >>> 16) & 0xff;
+                int green = (argb >>> 8) & 0xff;
+                int blue = argb & 0xff;
+
+                red = blendWithWhite(red, alpha);
+                green = blendWithWhite(green, alpha);
+                blue = blendWithWhite(blue, alpha);
+
+                int luminance = (red * 299 + green * 587 + blue * 114) / 1000;
+                binary.setRGB(x, y, luminance < 200 ? 0xff000000 : 0xffffffff);
+            }
+        }
+
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+        ImageIO.write(binary, "png", output);
+        return output.toByteArray();
+    }
+
+    private static int blendWithWhite(int color, int alpha) {
+        return (color * alpha + 255 * (255 - alpha)) / 255;
     }
 
     private static byte[] readAllBytes(java.io.InputStream in) throws java.io.IOException {

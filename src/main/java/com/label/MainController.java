@@ -203,9 +203,11 @@ public class MainController {
                             WaybillData parsedData = HtmlParser.parse(tmpFile.toFile());
                             parsedData.sourceFile = data.sourceFile;
                             parsedData.productInfo = data.productInfo;
-                            // PDF 中脱敏，表格显示不脱敏
-                            parsedData.recipientInfo = PrivacyMasker.maskRecipientInfo(data.recipientInfo);
-                            parsedData.senderInfo = PrivacyMasker.maskSenderInfo(data.senderInfo);
+                            // PDF 中脱敏，表格显示不脱敏；接口信息缺电话时保留 HTML 解析出的面单信息。
+                            parsedData.recipientInfo = buildPdfInfo(data.recipientInfo, parsedData.recipientInfo, true);
+                            parsedData.senderInfo = buildPdfInfo(data.senderInfo, parsedData.senderInfo, false);
+                            parsedData.recipientAddr = PrivacyMasker.maskPhonesInText(parsedData.recipientAddr);
+                            parsedData.senderAddr = PrivacyMasker.maskPhonesInText(parsedData.senderAddr);
 
                             String filename = item.getWaybillId().replaceAll("[\\\\/:*?\"<>|]", "_") + ".pdf";
                             File pdfFile = new File(outputDir, filename);
@@ -339,6 +341,20 @@ public class MainController {
         if (from != null && value.isBefore(from)) return false;
         if (to != null && value.isAfter(to)) return false;
         return true;
+    }
+
+    private static String buildPdfInfo(String apiInfo, String parsedInfo, boolean recipient) {
+        String source = hasPhoneNumber(apiInfo) || !hasText(parsedInfo) ? apiInfo : parsedInfo;
+        if (!hasText(source)) return source;
+        return recipient ? PrivacyMasker.maskRecipientInfo(source) : PrivacyMasker.maskSenderInfo(source);
+    }
+
+    private static boolean hasPhoneNumber(String value) {
+        return value != null && value.replaceAll("[^0-9]", "").length() >= 7;
+    }
+
+    private static boolean hasText(String value) {
+        return value != null && !value.trim().isEmpty();
     }
 
     // ==================== Print ====================

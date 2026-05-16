@@ -99,17 +99,17 @@ public class ApiClient {
         data.printHtml = (String) map.get("printHtml");
 
         // 表格展示不脱敏，原始数据直接显示
-        String recipientName = (String) map.get("recipientName");
-        String recipientPhone = (String) map.get("recipientPhone");
+        String recipientName = getString(map, "recipientName");
+        String recipientPhone = getFirstString(map, "recipientPhone", "receiverPhone", "recipientMobile", "receiverMobile");
         data.recipientInfo = buildInfo(recipientName, recipientPhone);
 
-        String senderName = (String) map.get("senderName");
-        String senderPhone = (String) map.get("senderPhone");
+        String senderName = getString(map, "senderName");
+        String senderPhone = getFirstString(map, "senderPhone", "senderMobile", "senderTel", "shipperPhone", "shipperMobile");
         data.senderInfo = buildInfo(senderName, senderPhone);
 
-        data.recipientAddr = (String) map.get("recipientAddress");
-        data.senderAddr = (String) map.get("senderAddress");
-        data.productInfo = (String) map.get("productInfo");
+        data.recipientAddr = getString(map, "recipientAddress");
+        data.senderAddr = getString(map, "senderAddress");
+        data.productInfo = getString(map, "productInfo");
         // 读取时间字段
         Object waybillCreated = map.get("createdAt");
         data.waybillCreatedAt = waybillCreated != null ? String.valueOf(waybillCreated) : null;
@@ -127,6 +127,21 @@ public class ApiClient {
         if (name != null) return name;
         if (phone != null) return phone;
         return "";
+    }
+
+    private static String getFirstString(Map<String, Object> map, String... keys) {
+        for (String key : keys) {
+            String value = getString(map, key);
+            if (value != null && !value.isBlank()) {
+                return value;
+            }
+        }
+        return null;
+    }
+
+    private static String getString(Map<String, Object> map, String key) {
+        Object value = map.get(key);
+        return value == null ? null : String.valueOf(value);
     }
 
     /**

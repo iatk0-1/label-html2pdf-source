@@ -1,9 +1,15 @@
 package com.label;
 
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
 /**
  * 隐私脱敏工具类
  */
 public class PrivacyMasker {
+
+    private static final Pattern PHONE_IN_TEXT = Pattern.compile(
+            "(?<!\\d)(?:1[3-9]\\d(?:[ -]?\\d){8}|0\\d{2,3}-?\\d{7,8})(?!\\d)");
 
     /**
      * 姓名脱敏：只显示第一个字，后面显示*
@@ -86,6 +92,23 @@ public class PrivacyMasker {
     }
 
     /**
+     * 脱敏文本中出现的手机号/固话，适用于电话混在地址行里的场景。
+     */
+    public static String maskPhonesInText(String text) {
+        if (text == null || text.isEmpty()) {
+            return text;
+        }
+
+        Matcher matcher = PHONE_IN_TEXT.matcher(text);
+        StringBuffer result = new StringBuffer();
+        while (matcher.find()) {
+            matcher.appendReplacement(result, Matcher.quoteReplacement(maskPhone(matcher.group())));
+        }
+        matcher.appendTail(result);
+        return result.toString();
+    }
+
+    /**
      * 组合脱敏：姓名 + 手机号
      *
      * @param nameAndPhone 原始字符串，格式如 "张三 13800138000"
@@ -104,26 +127,18 @@ public class PrivacyMasker {
         }
 
         if (parts.length == 1) {
-            // 只有一个部分，判断是姓名还是手机号
+            // 姓名和手机号可能粘在一起，例如“张三13800138000”。
             String part = parts[0];
-            if (part.matches(".*\\d.*")) {
-                // 包含数字，当作手机号处理
-                return maskPhone(part);
-            } else {
-                // 不包含数字，当作姓名处理
-                return maskName(part);
-            }
+            return part.matches(".*\\d.*") ? maskPhonesInText(part) : maskName(part);
         }
 
-        // 多个部分：第一个当作姓名，最后一个当作手机号
+        // 多个部分：第一个按姓名处理，后续任何位置出现的电话都要脱敏。
         StringBuilder result = new StringBuilder();
         result.append(maskName(parts[0]));
 
-        for (int i = 1; i < parts.length - 1; i++) {
-            result.append(" ").append(parts[i]);
+        for (int i = 1; i < parts.length; i++) {
+            result.append(" ").append(maskPhonesInText(parts[i]));
         }
-
-        result.append(" ").append(maskPhone(parts[parts.length - 1]));
 
         return result.toString();
     }
