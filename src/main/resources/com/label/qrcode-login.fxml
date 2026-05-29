@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.image.ImageView?>
+<?import javafx.scene.layout.*?>
+<?import javafx.scene.text.Font?>
+
+<VBox xmlns="http://javafx.com/javafx"
+      xmlns:fx="http://javafx.com/fxml"
+      fx:controller="com.label.QRCodeLoginController"
+      alignment="CENTER"
+      spacing="20"
+      styleClass="qrcode-login-container">
+
+    <padding>
+        <Insets top="40" right="40" bottom="40" left="40"/>
+    </padding>
+
+    <!-- 标题 -->
+    <Label text="微信扫码登录" styleClass="title">
+        <font>
+            <Font size="24" name="System Bold"/>
+        </font>
+    </Label>
+
+    <!-- 提示文字 -->
+    <Label text="请使用微信小程序扫描下方二维码" styleClass="subtitle">
+        <font>
+            <Font size="14"/>
+        </font>
+    </Label>
+
+    <!-- 二维码容器 -->
+    <VBox alignment="CENTER" spacing="10" styleClass="qrcode-box">
+        <padding>
+            <Insets top="20" right="20" bottom="20" left="20"/>
+        </padding>
+
+        <!-- 二维码图片 -->
+        <ImageView fx:id="qrCodeImageView" fitWidth="250" fitHeight="250" preserveRatio="true"/>
+
+        <!-- 状态文字 -->
+        <Label fx:id="statusLabel" text="等待扫码..." styleClass="status-label">
+            <font>
+                <Font size="12"/>
+            </font>
+        </Label>
+
+        <!-- 倒计时 -->
+        <Label fx:id="countdownLabel" text="有效期：5分钟" styleClass="countdown-label">
+            <font>
+                <Font size="11"/>
+            </font>
+        </Label>
+    </VBox>
+
+    <!-- 按钮区域 -->
+    <HBox alignment="CENTER" spacing="15">
+        <!-- 刷新按钮 -->
+        <Button fx:id="refreshButton" text="刷新二维码" onAction="#handleRefresh" styleClass="secondary-button">
+            <font>
+                <Font size="13"/>
+            </font>
+        </Button>
+
+        <!-- 返回按钮 -->
+        <Button fx:id="backButton" text="返回账号登录" onAction="#handleBack" styleClass="secondary-button">
+            <font>
+                <Font size="13"/>
+            </font>
+        </Button>
+    </HBox>
+
+    <!-- 提示信息 -->
+    <Label text="提示：需要先在小程序中创建打单账号" styleClass="hint-label" wrapText="true">
+        <font>
+            <Font size="11"/>
+        </font>
+    </Label>
+
+</VBox>

@@ -20,12 +20,20 @@ public class ApiClient {
     private final Gson gson;
     private Long userId;
 
+    public ApiClient() {
+        this("http://192.168.10.217:8080");
+    }
+
     public ApiClient(String baseUrl) {
         this.baseUrl = baseUrl;
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(10))
                 .build();
         this.gson = new Gson();
+    }
+
+    public void setUserId(Long userId) {
+        this.userId = userId;
     }
 
     /**
@@ -165,5 +173,47 @@ public class ApiClient {
 
     public Long getUserId() {
         return userId;
+    }
+
+    /**
+     * 通用 GET 请求
+     */
+    public String get(String path) throws IOException, InterruptedException {
+        String url = baseUrl + path;
+
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(url))
+                .header("Accept", "application/json")
+                .GET()
+                .build();
+
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+
+        if (response.statusCode() == 200) {
+            return response.body();
+        }
+
+        throw new IOException("GET 请求失败：HTTP " + response.statusCode() + " " + response.body());
+    }
+
+    /**
+     * 通用 POST 请求
+     */
+    public String post(String path, String jsonBody) throws IOException, InterruptedException {
+        String url = baseUrl + path;
+
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(url))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
+                .build();
+
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+
+        if (response.statusCode() == 200 || response.statusCode() == 201) {
+            return response.body();
+        }
+
+        throw new IOException("POST 请求失败：HTTP " + response.statusCode() + " " + response.body());
     }
 }

@@ -3,6 +3,7 @@
 <?import javafx.geometry.Insets?>
 <?import javafx.scene.control.*?>
 <?import javafx.scene.layout.*?>
+<?import javafx.scene.image.ImageView?>
 
 <VBox xmlns="http://javafx.com/javafx" xmlns:fx="http://javafx.com/fxml"
       fx:controller="com.label.LoginController"
@@ -12,33 +13,61 @@
 
     <Label text="打单软件登录" styleClass="login-title"/>
 
-    <!-- Server settings row: hidden by default, toggle with settings button -->
-    <HBox fx:id="serverRow" spacing="8" alignment="CENTER_LEFT" visible="false" managed="false">
-        <Label text="服务器:" prefWidth="60"/>
-        <TextField fx:id="serverField" HBox.hgrow="ALWAYS" promptText="http://192.168.10.217:8080"/>
-    </HBox>
+    <!-- 账号密码登录区域 -->
+    <VBox fx:id="accountLoginArea" spacing="12" alignment="CENTER">
+        <!-- Server settings row: hidden by default, toggle with settings button -->
+        <HBox fx:id="serverRow" spacing="8" alignment="CENTER_LEFT" visible="false" managed="false">
+            <Label text="服务器:" prefWidth="60"/>
+            <TextField fx:id="serverField" HBox.hgrow="ALWAYS" promptText="http://192.168.10.217:8080"/>
+        </HBox>
 
-    <HBox spacing="8" alignment="CENTER_LEFT">
-        <Label text="用户名:" prefWidth="60"/>
-        <TextField fx:id="usernameField" HBox.hgrow="ALWAYS" promptText="打印机账号"/>
-    </HBox>
+        <HBox spacing="8" alignment="CENTER_LEFT">
+            <Label text="用户名:" prefWidth="60"/>
+            <TextField fx:id="usernameField" HBox.hgrow="ALWAYS" promptText="打印机账号"/>
+        </HBox>
 
-    <HBox spacing="8" alignment="CENTER_LEFT">
-        <Label text="密码:" prefWidth="60"/>
-        <PasswordField fx:id="passwordField" HBox.hgrow="ALWAYS" promptText="密码"/>
-    </HBox>
+        <HBox spacing="8" alignment="CENTER_LEFT">
+            <Label text="密码:" prefWidth="60"/>
+            <PasswordField fx:id="passwordField" HBox.hgrow="ALWAYS" promptText="密码"/>
+        </HBox>
 
-    <HBox spacing="8" alignment="CENTER_LEFT">
-        <CheckBox fx:id="rememberPwdCheck" text="记住密码"/>
-        <Region HBox.hgrow="ALWAYS"/>
-        <Button fx:id="settingsBtn" text="设置" onAction="#onSettings"/>
-    </HBox>
+        <HBox spacing="8" alignment="CENTER_LEFT">
+            <CheckBox fx:id="rememberPwdCheck" text="记住密码"/>
+            <Region HBox.hgrow="ALWAYS"/>
+            <Button fx:id="settingsBtn" text="设置" onAction="#onSettings"/>
+        </HBox>
 
-    <Label fx:id="statusLabel" styleClass="login-status"/>
+        <Label fx:id="statusLabel" styleClass="login-status"/>
 
-    <HBox spacing="12" alignment="CENTER">
-        <Button fx:id="loginBtn" text="登录" defaultButton="true" onAction="#onLogin" styleClass="btn-primary"/>
-        <Button text="取消" onAction="#onCancel"/>
-    </HBox>
+        <HBox spacing="12" alignment="CENTER">
+            <Button fx:id="loginBtn" text="登录" defaultButton="true" onAction="#onLogin" styleClass="btn-primary"/>
+            <Button text="取消" onAction="#onCancel"/>
+        </HBox>
+
+        <!-- 切换到扫码登录 -->
+        <Button text="切换到微信扫码登录" onAction="#switchToQRCodeLogin" styleClass="btn-secondary" prefWidth="200"/>
+    </VBox>
+
+    <!-- 扫码登录区域 -->
+    <VBox fx:id="qrCodeLoginArea" spacing="15" alignment="CENTER" visible="false" managed="false">
+        <!-- 提示文字 -->
+        <Label text="请使用微信小程序扫描下方二维码" styleClass="qrcode-tip"/>
+
+        <!-- 二维码容器 -->
+        <VBox alignment="CENTER" spacing="10" styleClass="qrcode-container">
+            <ImageView fx:id="qrCodeImageView" fitWidth="200" fitHeight="200" preserveRatio="true"/>
+            <Label fx:id="qrStatusLabel" text="正在生成二维码..." styleClass="qrcode-status"/>
+            <Label fx:id="qrCountdownLabel" text="" styleClass="qrcode-countdown"/>
+        </VBox>
+
+        <!-- 按钮区域 -->
+        <HBox spacing="12" alignment="CENTER">
+            <Button fx:id="refreshQRBtn" text="刷新二维码" onAction="#onRefreshQRCode" styleClass="btn-secondary"/>
+            <Button text="返回账号登录" onAction="#switchToAccountLogin" styleClass="btn-secondary"/>
+        </HBox>
+
+        <!-- 提示信息 -->
+        <Label text="提示：需要先在小程序中创建打单账号" styleClass="qrcode-hint" wrapText="true"/>
+    </VBox>
 
 </VBox>
