@@ -278,6 +278,7 @@ public class LoginController {
 
                         // 保存登录信息
                         this.apiClient = client;
+                        this.apiClient.setUserId(userId);  // 设置 userId
                         this.serverUrl = serverUrl;
                         this.username = username;
                         this.userId = userId;
