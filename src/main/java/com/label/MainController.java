@@ -203,7 +203,6 @@ public class MainController {
                             WaybillData parsedData = HtmlParser.parse(tmpFile.toFile());
                             parsedData.sourceFile = data.sourceFile;
                             parsedData.productInfo = data.productInfo;
-                            parsedData.orderItems.addAll(data.orderItems);
                             // PDF 中脱敏，表格显示不脱敏；接口信息缺电话时保留 HTML 解析出的面单信息。
                             parsedData.recipientInfo = buildPdfInfo(data.recipientInfo, parsedData.recipientInfo, true);
                             parsedData.senderInfo = buildPdfInfo(data.senderInfo, parsedData.senderInfo, false);
@@ -219,7 +218,7 @@ public class MainController {
                             if (hasContent) {
                                 generator.generate(parsedData, pdfFile);
                             } else {
-                                generator.generateFromHtml(tmpFile.toFile(), pdfFile, parsedData);
+                                generator.generateFromHtml(tmpFile.toFile(), pdfFile, data.productInfo);
                             }
 
                             if (item.getWaybillDataId() != null) {

@@ -174,7 +174,11 @@ public class PdfGenerator {
                     Element.ALIGN_CENTER);
         }
 
-        drawOrderInfo(cb, data, bf);
+        // Product info at bottom (商品信息显示在面单最下方)
+        if (data.productInfo != null && !data.productInfo.isEmpty()) {
+            addText(cb, data.productInfo, bf, 10.90, 820, 584.26, 0, 18,
+                    Element.ALIGN_LEFT);
+        }
 
         document.close();
     }
@@ -182,7 +186,7 @@ public class PdfGenerator {
     /**
      * 直接用 HTML 渲染为 PDF（适用于微信 print_html 等无法被 HtmlParser 解析的 HTML）
      */
-    public void generateFromHtml(File htmlFile, File outputFile, WaybillData data) throws IOException, DocumentException {
+    public void generateFromHtml(File htmlFile, File outputFile, String productInfo) throws IOException, DocumentException {
         String html = new String(Files.readAllBytes(htmlFile.toPath()), StandardCharsets.UTF_8);
 
         Rectangle pageSize = new Rectangle(pageW, pageH);
@@ -202,8 +206,12 @@ public class PdfGenerator {
         htmlWorker.setStyleSheet(styles);
         htmlWorker.parse(new StringReader(html));
 
-        // 在面单最下方空白处渲染商品和订单备注
-        drawOrderInfo(writer.getDirectContent(), data, bf);
+        // 在面单最下方空白处渲染商品信息
+        if (productInfo != null && !productInfo.isEmpty()) {
+            PdfContentByte cb = writer.getDirectContent();
+            addText(cb, productInfo, bf, 10.90, 820, 584.26, 0, 18,
+                    Element.ALIGN_LEFT);
+        }
 
         document.close();
     }
@@ -290,37 +298,7 @@ public class PdfGenerator {
         return buf.toByteArray();
     }
 
-    private void drawOrderInfo(PdfContentByte cb, WaybillData data, BaseFont bf) {
-        double y = 820;
-        if (data.orderItems != null && !data.orderItems.isEmpty()) {
-            for (WaybillData.OrderPrintItem item : data.orderItems) {
-                if (item == null) continue;
-                if (hasText(item.productInfo)) {
-                    int lines = addText(cb, "商品：" + item.productInfo, bf,
-                            10.90, y, 584.26, 0, 16, Element.ALIGN_LEFT);
-                    y += lines * 48.0 + 4.0;
-                }
-                if (hasText(item.remark)) {
-                    int lines = addText(cb, "备注：" + item.remark, bf,
-                            10.90, y, 584.26, 0, 16, Element.ALIGN_LEFT);
-                    y += lines * 48.0 + 4.0;
-                }
-            }
-            return;
-        }
-
-        // 兼容旧接口：只有一条拼接后的商品信息时继续按旧逻辑绘制。
-        if (hasText(data.productInfo)) {
-            addText(cb, data.productInfo, bf, 10.90, y, 584.26, 0, 18,
-                    Element.ALIGN_LEFT);
-        }
-    }
-
-    private static boolean hasText(String value) {
-        return value != null && !value.trim().isEmpty();
-    }
-
-    private int addText(PdfContentByte cb, String text, BaseFont bf,
+    private void addText(PdfContentByte cb, String text, BaseFont bf,
                          double origX, double origY, double origW, double origH,
                          double origFontSize, int alignment) {
 
@@ -370,7 +348,6 @@ public class PdfGenerator {
             cb.showText(line);
             cb.endText();
         }
-        return outLines.size();
     }
 
 }
