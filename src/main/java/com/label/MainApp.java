@@ -15,8 +15,18 @@ public class MainApp extends Application {
     public void start(Stage stage) {
         primaryStage = stage;
 
+        // 记录应用启动
+        Logger.info("========================================");
+        Logger.info("应用启动: Label Printer v1.0.0");
+        Logger.info("Java 版本: " + System.getProperty("java.version"));
+        Logger.info("操作系统: " + System.getProperty("os.name") + " " + System.getProperty("os.version"));
+        Logger.info("用户目录: " + System.getProperty("user.home"));
+        Logger.info("工作目录: " + System.getProperty("user.dir"));
+        Logger.info("========================================");
+
         // Show login dialog (FXML)
         if (!showLoginDialog(stage)) {
+            Logger.info("用户取消登录，应用退出");
             System.exit(0);
             return;
         }
@@ -139,7 +149,7 @@ public class MainApp extends Application {
         try {
             // 创建 ApiClient
             String serverUrl = java.util.prefs.Preferences.userNodeForPackage(LoginController.class)
-                .get("server", "http://192.168.10.217:8080");
+                .get("server", "https://api.xianzaimai.com");
             ApiClient apiClient = new ApiClient(serverUrl);
             apiClient.setUserId(userId);
 

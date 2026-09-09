@@ -60,7 +60,7 @@ public class LoginController {
 
     @FXML
     public void initialize() {
-        serverField.setText(PREFS.get(KEY_SERVER, "http://192.168.10.217:8080"));
+        serverField.setText(PREFS.get(KEY_SERVER, "https://api.xianzaimai.com"));
         usernameField.setText(PREFS.get(KEY_USER, ""));
         passwordField.setText(PREFS.get(KEY_PASS, ""));
         rememberPwdCheck.setSelected(PREFS.getBoolean(KEY_REMEMBER, false));

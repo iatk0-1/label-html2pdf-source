@@ -47,13 +47,17 @@ public class ApiClient {
                 "password", password
         );
 
+        String requestJson = gson.toJson(requestBody);
+        Logger.logHttpRequest("POST", url, requestJson);
+
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(url))
                 .header("Content-Type", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofString(gson.toJson(requestBody)))
+                .POST(HttpRequest.BodyPublishers.ofString(requestJson))
                 .build();
 
         HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+        Logger.logHttpResponse("POST", url, response.statusCode(), response.body());
 
         if (response.statusCode() == 200) {
             Map<String, Object> result = gson.fromJson(response.body(), new TypeToken<Map<String, Object>>(){}.getType());
@@ -63,10 +67,11 @@ public class ApiClient {
             } else {
                 this.userId = Long.parseLong(String.valueOf(userIdObj));
             }
+            Logger.info("登录成功，用户ID: " + this.userId);
             return true;
         }
 
-        System.err.println("登录失败: HTTP " + response.statusCode() + " body=" + response.body());
+        Logger.error("登录失败: HTTP " + response.statusCode() + " body=" + response.body());
         return false;
     }
 
@@ -79,6 +84,7 @@ public class ApiClient {
         }
 
         String url = baseUrl + "/api/v1/waybills?userId=" + userId;
+        Logger.logHttpRequest("GET", url, null);
 
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(url))
@@ -87,12 +93,15 @@ public class ApiClient {
                 .build();
 
         HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+        Logger.logHttpResponse("GET", url, response.statusCode(), response.body());
 
         if (response.statusCode() == 200) {
             List<Map<String, Object>> rawList = gson.fromJson(response.body(), new TypeToken<List<Map<String, Object>>>(){}.getType());
+            Logger.info("成功拉取 " + rawList.size() + " 条面单数据");
             return rawList.stream().map(this::mapToWaybillData).toList();
         }
 
+        Logger.error("拉取面单失败：HTTP " + response.statusCode());
         throw new IOException("拉取面单失败：HTTP " + response.statusCode());
     }
 
@@ -105,6 +114,7 @@ public class ApiClient {
         if (idObj != null) data.id = Long.parseLong(idObj.toString());
         data.trackingNumber = (String) map.get("waybillId");
         data.printHtml = (String) map.get("printHtml");
+        data.expressCode = getString(map, "expressCode");  // 添加快递公司编码
 
         // 表格展示不脱敏，原始数据直接显示
         String recipientName = getString(map, "recipientName");
@@ -157,6 +167,7 @@ public class ApiClient {
      */
     public void markPrinted(Long waybillDataId) throws IOException, InterruptedException {
         String url = baseUrl + "/api/v1/waybills/" + waybillDataId + "/mark-printed";
+        Logger.logHttpRequest("POST", url, null);
 
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(url))
@@ -165,10 +176,14 @@ public class ApiClient {
                 .build();
 
         HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+        Logger.logHttpResponse("POST", url, response.statusCode(), response.body());
 
         if (response.statusCode() != 204) {
+            Logger.error("标记已打印失败：HTTP " + response.statusCode());
             throw new IOException("标记已打印失败：HTTP " + response.statusCode());
         }
+
+        Logger.info("成功标记运单 " + waybillDataId + " 为已打印");
     }
 
     public Long getUserId() {
@@ -180,6 +195,7 @@ public class ApiClient {
      */
     public String get(String path) throws IOException, InterruptedException {
         String url = baseUrl + path;
+        Logger.logHttpRequest("GET", url, null);
 
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(url))
@@ -188,11 +204,13 @@ public class ApiClient {
                 .build();
 
         HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+        Logger.logHttpResponse("GET", url, response.statusCode(), response.body());
 
         if (response.statusCode() == 200) {
             return response.body();
         }
 
+        Logger.error("GET 请求失败：HTTP " + response.statusCode() + " " + response.body());
         throw new IOException("GET 请求失败：HTTP " + response.statusCode() + " " + response.body());
     }
 
@@ -201,6 +219,7 @@ public class ApiClient {
      */
     public String post(String path, String jsonBody) throws IOException, InterruptedException {
         String url = baseUrl + path;
+        Logger.logHttpRequest("POST", url, jsonBody);
 
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(url))
@@ -209,11 +228,13 @@ public class ApiClient {
                 .build();
 
         HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+        Logger.logHttpResponse("POST", url, response.statusCode(), response.body());
 
         if (response.statusCode() == 200 || response.statusCode() == 201) {
             return response.body();
         }
 
+        Logger.error("POST 请求失败：HTTP " + response.statusCode() + " " + response.body());
         throw new IOException("POST 请求失败：HTTP " + response.statusCode() + " " + response.body());
     }
 }

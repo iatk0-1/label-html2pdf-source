@@ -1,0 +1,10 @@
+target/
+/dependency-reduced-pom.xml
+/dist/
+/dist-jpackage/
+/jpackage-input/
+/runtime/
+/runtime-javafx/
+/launcher/launcher.properties
+/LabelPrinter.exe
+/logs/

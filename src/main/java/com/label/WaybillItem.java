@@ -92,4 +92,5 @@ public class WaybillItem {
 
     public WaybillData getData() { return data; }
     public Long getWaybillDataId() { return data.id; }
+    public String getExpressCode() { return data.expressCode; }
 }

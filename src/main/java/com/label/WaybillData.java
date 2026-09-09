@@ -15,6 +15,7 @@ public class WaybillData {
     public String codLabel;         // "货到付款" or similar
     public String verifiedStamp;    // "已验视"
     public String productInfo;      // 商品信息（格式：商品名称 * 数量）
+    public String expressCode;      // 快递公司编码（如：ZTO、YUNDA）
 
     public byte[] logoImage;
     public byte[] barcodeImage;

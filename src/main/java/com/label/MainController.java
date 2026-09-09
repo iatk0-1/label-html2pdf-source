@@ -116,6 +116,7 @@ public class MainController {
 
     @FXML
     private void onFetch() {
+        Logger.info("用户点击拉取面单按钮");
         btnFetch.setDisable(true);
         btnGenerate.setDisable(true);
         logArea.clear();
@@ -132,6 +133,7 @@ public class MainController {
         task.setOnSucceeded(ev -> {
             List<WaybillData> list = task.getValue();
             fetchStatusLabel.setText("拉取成功，共 " + list.size() + " 条面单数据");
+            Logger.info("拉取面单成功，共 " + list.size() + " 条");
 
             allItems.clear();
             for (WaybillData wd : list) {
@@ -146,7 +148,9 @@ public class MainController {
 
         task.setOnFailed(ev -> {
             fetchStatusLabel.setText("拉取失败");
-            logArea.appendText("错误：" + task.getException().getMessage() + "\n");
+            String errorMsg = task.getException().getMessage();
+            logArea.appendText("错误：" + errorMsg + "\n");
+            Logger.error("拉取面单失败: " + errorMsg, task.getException());
             btnFetch.setDisable(false);
         });
 
@@ -161,9 +165,11 @@ public class MainController {
 
         if (selected.isEmpty()) {
             fetchStatusLabel.setText("请至少勾选一条面单数据");
+            Logger.warn("用户未勾选任何面单");
             return;
         }
 
+        Logger.info("开始生成 PDF，共 " + selected.size() + " 条面单");
         btnFetch.setDisable(true);
         btnGenerate.setDisable(true);
         progressBar.setVisible(true);
@@ -174,6 +180,7 @@ public class MainController {
         if (!outputDir.exists()) {
             outputDir.mkdirs();
         }
+        Logger.info("输出目录: " + outputDir.getAbsolutePath());
 
         Task<Integer> task = new Task<>() {
             @Override
@@ -181,13 +188,17 @@ public class MainController {
                 int success = 0;
                 int total = selected.size();
                 PdfGenerator generator = new PdfGenerator();
+                YundaPdfGenerator yundaGenerator = new YundaPdfGenerator();
 
                 for (int i = 0; i < total; i++) {
                     WaybillItem item = selected.get(i);
                     WaybillData data = item.getData();
 
                     try {
+                        Logger.info("开始处理面单 [" + (i+1) + "/" + total + "]: " + item.getWaybillId());
+
                         if (data.printHtml == null || data.printHtml.isEmpty()) {
+                            Logger.warn("面单 " + item.getWaybillId() + " 无 print_html 数据");
                             Platform.runLater(() ->
                                 logArea.appendText("✗ " + item.getWaybillId() + " - 无 print_html 数据\n")
                             );
@@ -198,9 +209,22 @@ public class MainController {
                         String html = new String(htmlBytes, StandardCharsets.UTF_8);
                         Path tmpFile = Files.createTempFile("waybill_", ".html");
                         Files.write(tmpFile, html.getBytes(StandardCharsets.UTF_8));
+                        Logger.debug("临时 HTML 文件: " + tmpFile.toAbsolutePath());
 
                         try {
-                            WaybillData parsedData = HtmlParser.parse(tmpFile.toFile());
+                            // 根据 express_code 选择不同的解析器
+                            WaybillData parsedData;
+                            boolean isYunda = "YUNDA".equalsIgnoreCase(item.getExpressCode());
+                            Logger.info("快递公司: " + (isYunda ? "韵达" : item.getExpressCode()));
+
+                            if (isYunda) {
+                                // 韵达快递使用专用解析器
+                                parsedData = YundaHtmlParser.parse(tmpFile.toFile());
+                            } else {
+                                // 中通等其他快递使用默认解析器
+                                parsedData = HtmlParser.parse(tmpFile.toFile());
+                            }
+
                             parsedData.sourceFile = data.sourceFile;
                             parsedData.productInfo = data.productInfo;
                             // PDF 中脱敏，表格显示不脱敏；接口信息缺电话时保留 HTML 解析出的面单信息。
@@ -211,13 +235,21 @@ public class MainController {
 
                             String filename = item.getWaybillId().replaceAll("[\\\\/:*?\"<>|]", "_") + ".pdf";
                             File pdfFile = new File(outputDir, filename);
+                            Logger.info("生成 PDF: " + pdfFile.getAbsolutePath());
 
                             boolean hasContent = (parsedData.trackingNumber != null && !parsedData.trackingNumber.isEmpty())
                                     || !parsedData.hlines.isEmpty() || !parsedData.vlines.isEmpty() || !parsedData.images.isEmpty();
 
                             if (hasContent) {
-                                generator.generate(parsedData, pdfFile);
+                                // 根据快递公司选择不同的 PDF 生成器
+                                if (isYunda) {
+                                    yundaGenerator.generate(parsedData, pdfFile);
+                                } else {
+                                    generator.generate(parsedData, pdfFile);
+                                }
+                                Logger.info("PDF 生成成功: " + filename);
                             } else {
+                                Logger.warn("面单内容为空，使用 HTML 直接生成");
                                 generator.generateFromHtml(tmpFile.toFile(), pdfFile, data.productInfo);
                             }
 
@@ -226,6 +258,7 @@ public class MainController {
                                     apiClient.markPrinted(item.getWaybillDataId());
                                     Platform.runLater(() -> item.markPrinted());
                                 } catch (Exception ex) {
+                                    Logger.warn("标记已生成失败 (id=" + item.getWaybillDataId() + "): " + ex.getMessage());
                                     Platform.runLater(() ->
                                         logArea.appendText("⚠ 标记已生成失败 (id=" + item.getWaybillDataId() + "): " + ex.getMessage() + "\n")
                                     );
@@ -244,6 +277,7 @@ public class MainController {
                             try { Files.deleteIfExists(tmpFile); } catch (Exception ignored) {}
                         }
                     } catch (Exception ex) {
+                        Logger.error("处理面单失败: " + item.getWaybillId(), ex);
                         Platform.runLater(() ->
                             logArea.appendText("✗ " + item.getWaybillId() + " - " + ex.getMessage() + "\n")
                         );
@@ -252,6 +286,7 @@ public class MainController {
                     final int idx = i;
                     Platform.runLater(() -> progressBar.setProgress((double) (idx + 1) / total));
                 }
+                Logger.info("PDF 生成任务完成，成功: " + success + "/" + total);
                 return success;
             }
         };
