@@ -3,9 +3,25 @@ package com.label;
 import javafx.beans.property.SimpleBooleanProperty;
 import javafx.beans.property.SimpleStringProperty;
 
+import java.math.BigDecimal;
+import java.time.Instant;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeFormatterBuilder;
+import java.time.format.DateTimeParseException;
+import java.time.temporal.ChronoField;
 
 public class WaybillItem {
+    private static final DateTimeFormatter SPACE_DATE_TIME_FORMATTER = new DateTimeFormatterBuilder()
+            .appendPattern("yyyy-MM-dd HH:mm:ss")
+            .optionalStart()
+            .appendFraction(ChronoField.NANO_OF_SECOND, 0, 9, true)
+            .optionalEnd()
+            .toFormatter();
+
     private final SimpleBooleanProperty selected = new SimpleBooleanProperty(true);
     private final SimpleStringProperty waybillId = new SimpleStringProperty();
     private final SimpleStringProperty recipientName = new SimpleStringProperty();
@@ -50,14 +66,46 @@ public class WaybillItem {
     }
 
     private static LocalDateTime parseDateTime(String raw) {
-        if (raw == null || raw.isEmpty()) return null;
-        try {
-            if (raw.contains("T")) {
-                // ISO格式: "2026-05-15T14:30:00.123" → 截取到秒 "2026-05-15T14:30:00"
-                return LocalDateTime.parse(raw.substring(0, Math.min(raw.length(), 19)));
+        if (raw == null || raw.trim().isEmpty()) return null;
+
+        String value = raw.trim();
+
+        // Gson represents numeric JSON values as numbers. Accept both epoch seconds
+        // and epoch milliseconds in case the API uses a numeric timestamp.
+        if (value.matches("-?\\d+(\\.\\d+)?")) {
+            try {
+                BigDecimal number = new BigDecimal(value);
+                long timestamp = number.longValueExact();
+                Instant instant = value.replace("-", "").length() >= 12
+                        ? Instant.ofEpochMilli(timestamp)
+                        : Instant.ofEpochSecond(timestamp);
+                return instant.atZone(ZoneId.systemDefault()).toLocalDateTime();
+            } catch (ArithmeticException | DateTimeParseException ignored) {
+                // Fall through to the textual formats below.
             }
-            return null;
-        } catch (Exception e) {
+        }
+
+        try {
+            return LocalDateTime.parse(value, DateTimeFormatter.ISO_LOCAL_DATE_TIME);
+        } catch (DateTimeParseException ignored) {
+            // Continue with offset and legacy server formats.
+        }
+
+        try {
+            return OffsetDateTime.parse(value, DateTimeFormatter.ISO_OFFSET_DATE_TIME).toLocalDateTime();
+        } catch (DateTimeParseException ignored) {
+            // Continue with the space-separated format.
+        }
+
+        try {
+            return LocalDateTime.parse(value, SPACE_DATE_TIME_FORMATTER);
+        } catch (DateTimeParseException ignored) {
+            // Continue with date-only values.
+        }
+
+        try {
+            return LocalDate.parse(value, DateTimeFormatter.ISO_LOCAL_DATE).atStartOfDay();
+        } catch (DateTimeParseException ignored) {
             return null;
         }
     }

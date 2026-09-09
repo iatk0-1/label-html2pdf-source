@@ -129,12 +129,9 @@ public class ApiClient {
         data.senderAddr = getString(map, "senderAddress");
         data.productInfo = getString(map, "productInfo");
         // 读取时间字段
-        Object waybillCreated = map.get("createdAt");
-        data.waybillCreatedAt = waybillCreated != null ? String.valueOf(waybillCreated) : null;
-        Object orderCreated = map.get("orderCreatedAt");
-        data.orderCreatedAt = orderCreated != null ? String.valueOf(orderCreated) : null;
-        Object lastPrinted = map.get("lastPrintedAt");
-        data.lastPrintedAt = lastPrinted != null ? String.valueOf(lastPrinted) : null;
+        data.waybillCreatedAt = getTimeString(map, "createdAt");
+        data.orderCreatedAt = getTimeString(map, "orderCreatedAt");
+        data.lastPrintedAt = getTimeString(map, "lastPrintedAt");
 
         data.sourceFile = "API-" + map.get("waybillId");
         return data;
@@ -160,6 +157,12 @@ public class ApiClient {
     private static String getString(Map<String, Object> map, String key) {
         Object value = map.get(key);
         return value == null ? null : String.valueOf(value);
+    }
+
+    private static String getTimeString(Map<String, Object> map, String key) {
+        Object value = map.get(key);
+        if (value == null) return null;
+        return value instanceof String ? ((String) value).trim() : String.valueOf(value);
     }
 
     /**

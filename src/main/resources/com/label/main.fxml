@@ -57,6 +57,7 @@
                 <TableView fx:id="waybillTable" editable="true" VBox.vgrow="ALWAYS">
                     <columns>
                         <TableColumn fx:id="selectCol" text="选择" prefWidth="50" editable="true"/>
+                        <TableColumn fx:id="sequenceCol" text="序号" prefWidth="55"/>
                         <TableColumn fx:id="waybillCol" text="运单号" prefWidth="160"/>
                         <TableColumn fx:id="recipientCol" text="收件人" prefWidth="100"/>
                         <TableColumn fx:id="addressCol" text="收件地址" prefWidth="200"/>

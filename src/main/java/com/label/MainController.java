@@ -30,6 +30,7 @@ public class MainController {
     @FXML private Label fetchStatusLabel;
     @FXML private ProgressBar progressBar;
     @FXML private TableView<WaybillItem> waybillTable;
+    @FXML private TableColumn<WaybillItem, Void> sequenceCol;
     @FXML private TableColumn<WaybillItem, Boolean> selectCol;
     @FXML private TableColumn<WaybillItem, String> waybillCol;
     @FXML private TableColumn<WaybillItem, String> recipientCol;
@@ -75,6 +76,16 @@ public class MainController {
 
     @FXML
     public void initialize() {
+        sequenceCol.setSortable(false);
+        sequenceCol.setReorderable(false);
+        sequenceCol.setCellFactory(column -> new TableCell<>() {
+            @Override
+            protected void updateItem(Void item, boolean empty) {
+                super.updateItem(item, empty);
+                setText(empty ? null : Integer.toString(getIndex() + 1));
+            }
+        });
+
         selectCol.setCellValueFactory(cellData -> cellData.getValue().selectedProperty());
         selectCol.setCellFactory(CheckBoxTableCell.forTableColumn(selectCol));
         waybillCol.setCellValueFactory(cellData -> cellData.getValue().waybillIdProperty());
