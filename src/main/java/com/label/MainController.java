@@ -35,6 +35,8 @@ public class MainController {
     @FXML private TableColumn<WaybillItem, String> waybillCol;
     @FXML private TableColumn<WaybillItem, String> recipientCol;
     @FXML private TableColumn<WaybillItem, String> addressCol;
+    @FXML private TableColumn<WaybillItem, String> orderNumberCol;
+    @FXML private TableColumn<WaybillItem, String> remarkCol;
     @FXML private TableColumn<WaybillItem, String> waybillCreatedTimeCol;
     @FXML private TableColumn<WaybillItem, String> orderCreatedTimeCol;
     @FXML private TableColumn<WaybillItem, String> lastGenTimeCol;
@@ -91,6 +93,8 @@ public class MainController {
         waybillCol.setCellValueFactory(cellData -> cellData.getValue().waybillIdProperty());
         recipientCol.setCellValueFactory(cellData -> cellData.getValue().recipientNameProperty());
         addressCol.setCellValueFactory(cellData -> cellData.getValue().recipientAddressProperty());
+        orderNumberCol.setCellValueFactory(cellData -> cellData.getValue().orderNumbersProperty());
+        remarkCol.setCellValueFactory(cellData -> cellData.getValue().remarksProperty());
         waybillCreatedTimeCol.setCellValueFactory(cellData -> cellData.getValue().waybillCreatedTimeProperty());
         orderCreatedTimeCol.setCellValueFactory(cellData -> cellData.getValue().orderCreatedTimeProperty());
         lastGenTimeCol.setCellValueFactory(cellData -> cellData.getValue().lastGenTimeProperty());
@@ -237,7 +241,8 @@ public class MainController {
                             }
 
                             parsedData.sourceFile = data.sourceFile;
-                            parsedData.productInfo = data.productInfo;
+                            String pdfProductInfo = data.getProductInfoForPdf();
+                            parsedData.productInfo = pdfProductInfo;
                             // PDF 中脱敏，表格显示不脱敏；接口信息缺电话时保留 HTML 解析出的面单信息。
                             parsedData.recipientInfo = buildPdfInfo(data.recipientInfo, parsedData.recipientInfo, true);
                             parsedData.senderInfo = buildPdfInfo(data.senderInfo, parsedData.senderInfo, false);
@@ -261,7 +266,7 @@ public class MainController {
                                 Logger.info("PDF 生成成功: " + filename);
                             } else {
                                 Logger.warn("面单内容为空，使用 HTML 直接生成");
-                                generator.generateFromHtml(tmpFile.toFile(), pdfFile, data.productInfo);
+                                generator.generateFromHtml(tmpFile.toFile(), pdfFile, pdfProductInfo);
                             }
 
                             if (item.getWaybillDataId() != null) {

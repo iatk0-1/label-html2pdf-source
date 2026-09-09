@@ -8,6 +8,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 /**
@@ -128,6 +129,7 @@ public class ApiClient {
         data.recipientAddr = getString(map, "recipientAddress");
         data.senderAddr = getString(map, "senderAddress");
         data.productInfo = getString(map, "productInfo");
+        data.orderItems = parseOrderItems(map.get("orderItems"));
         // 读取时间字段
         data.waybillCreatedAt = getTimeString(map, "createdAt");
         data.orderCreatedAt = getTimeString(map, "orderCreatedAt");
@@ -154,7 +156,7 @@ public class ApiClient {
         return null;
     }
 
-    private static String getString(Map<String, Object> map, String key) {
+    private static String getString(Map<?, ?> map, String key) {
         Object value = map.get(key);
         return value == null ? null : String.valueOf(value);
     }
@@ -163,6 +165,48 @@ public class ApiClient {
         Object value = map.get(key);
         if (value == null) return null;
         return value instanceof String ? ((String) value).trim() : String.valueOf(value);
+    }
+
+    private static List<WaybillOrderItem> parseOrderItems(Object rawValue) {
+        if (!(rawValue instanceof List<?> rawItems)) {
+            return new ArrayList<>();
+        }
+
+        List<WaybillOrderItem> items = new ArrayList<>();
+        for (Object rawItem : rawItems) {
+            if (!(rawItem instanceof Map<?, ?> item)) continue;
+
+            items.add(new WaybillOrderItem(
+                    getLong(item, "orderId"),
+                    getLong(item, "orderItemId"),
+                    getString(item, "adminSeqNo"),
+                    getString(item, "productInfo"),
+                    getInteger(item, "qty"),
+                    getString(item, "remark")));
+        }
+        return items;
+    }
+
+    private static Long getLong(Map<?, ?> map, String key) {
+        Object value = map.get(key);
+        if (value == null) return null;
+        if (value instanceof Number number) return number.longValue();
+        try {
+            return Long.parseLong(String.valueOf(value));
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
+    }
+
+    private static Integer getInteger(Map<?, ?> map, String key) {
+        Object value = map.get(key);
+        if (value == null) return null;
+        if (value instanceof Number number) return number.intValue();
+        try {
+            return Integer.parseInt(String.valueOf(value));
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
     }
 
     /**

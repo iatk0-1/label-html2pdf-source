@@ -26,6 +26,8 @@ public class WaybillItem {
     private final SimpleStringProperty waybillId = new SimpleStringProperty();
     private final SimpleStringProperty recipientName = new SimpleStringProperty();
     private final SimpleStringProperty recipientAddress = new SimpleStringProperty();
+    private final SimpleStringProperty orderNumbers = new SimpleStringProperty();
+    private final SimpleStringProperty remarks = new SimpleStringProperty();
     private final SimpleStringProperty waybillCreatedTime = new SimpleStringProperty();   // 面单创建时间
     private final SimpleStringProperty orderCreatedTime = new SimpleStringProperty();     // 订单创建时间
     private final SimpleStringProperty lastGenTime = new SimpleStringProperty();          // 上次生成PDF
@@ -41,6 +43,8 @@ public class WaybillItem {
         this.waybillId.set(data.trackingNumber != null ? data.trackingNumber : "");
         this.recipientName.set(data.recipientInfo != null ? data.recipientInfo : "");
         this.recipientAddress.set(data.recipientAddr != null ? data.recipientAddr : "");
+        this.orderNumbers.set(data.getOrderNumbersForDisplay());
+        this.remarks.set(data.getRemarksForDisplay());
         this.rawWaybillCreatedAt = data.waybillCreatedAt;
         this.rawOrderCreatedAt = data.orderCreatedAt;
         this.rawLastPrintedAt = data.lastPrintedAt;
@@ -122,6 +126,12 @@ public class WaybillItem {
 
     public String getRecipientAddress() { return recipientAddress.get(); }
     public SimpleStringProperty recipientAddressProperty() { return recipientAddress; }
+
+    public String getOrderNumbers() { return orderNumbers.get(); }
+    public SimpleStringProperty orderNumbersProperty() { return orderNumbers; }
+
+    public String getRemarks() { return remarks.get(); }
+    public SimpleStringProperty remarksProperty() { return remarks; }
 
     public String getWaybillCreatedTime() { return waybillCreatedTime.get(); }
     public SimpleStringProperty waybillCreatedTimeProperty() { return waybillCreatedTime; }
