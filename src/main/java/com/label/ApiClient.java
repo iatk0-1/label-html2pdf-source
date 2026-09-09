@@ -118,6 +118,21 @@ public class ApiClient {
         data.recipientAddr = getString(map, "recipientAddress");
         data.senderAddr = getString(map, "senderAddress");
         data.productInfo = getString(map, "productInfo");
+        Object orderItemsObj = map.get("orderItems");
+        if (orderItemsObj instanceof List<?> rawItems) {
+            for (Object rawItem : rawItems) {
+                if (!(rawItem instanceof Map<?, ?> itemMap)) continue;
+                WaybillData.OrderPrintItem item = new WaybillData.OrderPrintItem();
+                item.orderId = getLong(itemMap, "orderId");
+                item.orderItemId = getLong(itemMap, "orderItemId");
+                item.productInfo = getItemString(itemMap, "productInfo");
+                item.qty = getInteger(itemMap, "qty");
+                item.remark = getItemString(itemMap, "remark");
+                if (hasText(item.productInfo) || hasText(item.remark)) {
+                    data.orderItems.add(item);
+                }
+            }
+        }
         // 读取时间字段
         Object waybillCreated = map.get("createdAt");
         data.waybillCreatedAt = waybillCreated != null ? String.valueOf(waybillCreated) : null;
@@ -150,6 +165,37 @@ public class ApiClient {
     private static String getString(Map<String, Object> map, String key) {
         Object value = map.get(key);
         return value == null ? null : String.valueOf(value);
+    }
+
+    private static String getItemString(Map<?, ?> map, String key) {
+        Object value = map.get(key);
+        return value == null ? null : String.valueOf(value);
+    }
+
+    private static Long getLong(Map<?, ?> map, String key) {
+        Object value = map.get(key);
+        if (value == null) return null;
+        if (value instanceof Number number) return number.longValue();
+        try {
+            return Long.parseLong(String.valueOf(value));
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
+    }
+
+    private static Integer getInteger(Map<?, ?> map, String key) {
+        Object value = map.get(key);
+        if (value == null) return null;
+        if (value instanceof Number number) return number.intValue();
+        try {
+            return Integer.parseInt(String.valueOf(value));
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
+    }
+
+    private static boolean hasText(String value) {
+        return value != null && !value.trim().isEmpty();
     }
 
     /**

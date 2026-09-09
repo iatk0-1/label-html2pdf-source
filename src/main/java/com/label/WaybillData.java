@@ -15,6 +15,7 @@ public class WaybillData {
     public String codLabel;         // "货到付款" or similar
     public String verifiedStamp;    // "已验视"
     public String productInfo;      // 商品信息（格式：商品名称 * 数量）
+    public List<OrderPrintItem> orderItems = new ArrayList<>();
 
     public byte[] logoImage;
     public byte[] barcodeImage;
@@ -45,5 +46,14 @@ public class WaybillData {
     public static class LineInfo {
         public double left, top, width, height;
         public int type; // 0=hline, 1=vline
+    }
+
+    /** 商品和订单备注的最小关联单元，避免合单面单串备注。 */
+    public static class OrderPrintItem {
+        public Long orderId;
+        public Long orderItemId;
+        public String productInfo;
+        public Integer qty;
+        public String remark;
     }
 }
