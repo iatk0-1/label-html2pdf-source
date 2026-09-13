@@ -9,6 +9,7 @@ import javafx.concurrent.Task;
 import javafx.fxml.FXML;
 import javafx.scene.control.*;
 import javafx.scene.control.cell.CheckBoxTableCell;
+import javafx.scene.layout.HBox;
 import javafx.stage.DirectoryChooser;
 
 import java.io.File;
@@ -27,7 +28,11 @@ public class MainController {
     // === Fetch tab ===
     @FXML private Button btnFetch;
     @FXML private Button btnGenerate;
+    @FXML private Button btnGenerateAndPrint;
+    @FXML private Button btnPreviewSelected;
+    @FXML private Button btnPrintSelected;
     @FXML private Label fetchStatusLabel;
+    @FXML private Label printerStatusLabel;
     @FXML private ProgressBar progressBar;
     @FXML private TableView<WaybillItem> waybillTable;
     @FXML private TableColumn<WaybillItem, Void> sequenceCol;
@@ -40,6 +45,8 @@ public class MainController {
     @FXML private TableColumn<WaybillItem, String> waybillCreatedTimeCol;
     @FXML private TableColumn<WaybillItem, String> orderCreatedTimeCol;
     @FXML private TableColumn<WaybillItem, String> lastGenTimeCol;
+    @FXML private TableColumn<WaybillItem, String> statusCol;
+    @FXML private TableColumn<WaybillItem, Void> actionCol;
     @FXML private Button btnSelectUnprinted;
     @FXML private TextArea logArea;
     @FXML private DatePicker waybillDateFrom;
@@ -57,6 +64,7 @@ public class MainController {
 
     // === Print tab ===
     @FXML private ComboBox<String> printerComboBox;
+    @FXML private Label printTabPrinterLabel;
     @FXML private Button btnSelectPrintFolder;
     @FXML private Button btnPrint;
     @FXML private Label printFolderLabel;
@@ -98,12 +106,44 @@ public class MainController {
         waybillCreatedTimeCol.setCellValueFactory(cellData -> cellData.getValue().waybillCreatedTimeProperty());
         orderCreatedTimeCol.setCellValueFactory(cellData -> cellData.getValue().orderCreatedTimeProperty());
         lastGenTimeCol.setCellValueFactory(cellData -> cellData.getValue().lastGenTimeProperty());
+        statusCol.setCellValueFactory(cellData -> cellData.getValue().statusProperty());
+        actionCol.setSortable(false);
+        actionCol.setReorderable(false);
+        actionCol.setCellFactory(column -> new TableCell<>() {
+            private final Button previewButton = new Button("预览");
+            private final Button printButton = new Button("打印");
+            private final HBox buttons = new HBox(4, previewButton, printButton);
+
+            {
+                previewButton.setOnAction(event -> {
+                    WaybillItem item = getTableView().getItems().get(getIndex());
+                    onPreviewItem(item);
+                });
+                printButton.setOnAction(event -> {
+                    WaybillItem item = getTableView().getItems().get(getIndex());
+                    onPrintItems(List.of(item));
+                });
+            }
+
+            @Override
+            protected void updateItem(Void item, boolean empty) {
+                super.updateItem(item, empty);
+                setGraphic(empty ? null : buttons);
+            }
+        });
         waybillTable.setItems(waybillItems);
 
         pdfSelectCol.setCellValueFactory(cellData -> cellData.getValue().selectedProperty());
         pdfSelectCol.setCellFactory(CheckBoxTableCell.forTableColumn(pdfSelectCol));
         pdfNameCol.setCellValueFactory(cellData -> cellData.getValue().nameProperty());
         pdfTable.setItems(pdfItems);
+
+        printerComboBox.valueProperty().addListener((obs, oldValue, newValue) -> {
+            if (newValue != null && !newValue.isBlank()) {
+                PrinterPreferences.setLastPrinter(newValue);
+            }
+            updatePrinterLabels();
+        });
 
         loadPrinters();
         initTimeCombos();
@@ -132,8 +172,7 @@ public class MainController {
     @FXML
     private void onFetch() {
         Logger.info("用户点击拉取面单按钮");
-        btnFetch.setDisable(true);
-        btnGenerate.setDisable(true);
+        setWaybillActionsDisabled(true);
         logArea.clear();
         fetchStatusLabel.setText("正在拉取面单数据...");
         waybillItems.clear();
@@ -157,8 +196,7 @@ public class MainController {
 
             applyFilter();
 
-            btnGenerate.setDisable(list.isEmpty());
-            btnFetch.setDisable(false);
+            restoreFetchActions();
         });
 
         task.setOnFailed(ev -> {
@@ -166,7 +204,7 @@ public class MainController {
             String errorMsg = task.getException().getMessage();
             logArea.appendText("错误：" + errorMsg + "\n");
             Logger.error("拉取面单失败: " + errorMsg, task.getException());
-            btnFetch.setDisable(false);
+            restoreFetchActions();
         });
 
         new Thread(task).start();
@@ -184,17 +222,40 @@ public class MainController {
             return;
         }
 
-        Logger.info("开始生成 PDF，共 " + selected.size() + " 条面单");
+        runGenerateTask(selected, false);
+    }
+
+    @FXML
+    private void onGenerateAndPrint() {
+        List<WaybillItem> selected = getSelectedWaybills();
+        if (selected.isEmpty()) {
+            fetchStatusLabel.setText("请至少勾选一条面单数据");
+            Logger.warn("用户未勾选任何面单");
+            return;
+        }
+
+        if (!hasSelectedPrinter()) {
+            showAlert("请先选择打印机");
+            return;
+        }
+
+        runGenerateTask(selected, true);
+    }
+
+    private void runGenerateTask(List<WaybillItem> selected, boolean printAfterGenerate) {
+        String printer = printerComboBox.getValue();
+
+        Logger.info("开始处理面单，共 " + selected.size() + " 条，生成后打印: " + printAfterGenerate);
         btnFetch.setDisable(true);
         btnGenerate.setDisable(true);
+        btnGenerateAndPrint.setDisable(true);
+        btnPreviewSelected.setDisable(true);
+        btnPrintSelected.setDisable(true);
         progressBar.setVisible(true);
         progressBar.setProgress(0);
         logArea.clear();
 
-        File outputDir = new File(System.getProperty("user.home"), "Desktop/面单PDF");
-        if (!outputDir.exists()) {
-            outputDir.mkdirs();
-        }
+        File outputDir = getPdfOutputDir();
         Logger.info("输出目录: " + outputDir.getAbsolutePath());
 
         Task<Integer> task = new Task<>() {
@@ -204,103 +265,52 @@ public class MainController {
                 int total = selected.size();
                 PdfGenerator generator = new PdfGenerator();
                 YundaPdfGenerator yundaGenerator = new YundaPdfGenerator();
+                List<GeneratedPdf> generatedPdfs = new ArrayList<>();
 
                 for (int i = 0; i < total; i++) {
                     WaybillItem item = selected.get(i);
-                    WaybillData data = item.getData();
-
                     try {
                         Logger.info("开始处理面单 [" + (i+1) + "/" + total + "]: " + item.getWaybillId());
 
-                        if (data.printHtml == null || data.printHtml.isEmpty()) {
-                            Logger.warn("面单 " + item.getWaybillId() + " 无 print_html 数据");
-                            Platform.runLater(() ->
-                                logArea.appendText("✗ " + item.getWaybillId() + " - 无 print_html 数据\n")
-                            );
-                            continue;
-                        }
-
-                        byte[] htmlBytes = Base64.getDecoder().decode(data.printHtml);
-                        String html = new String(htmlBytes, StandardCharsets.UTF_8);
-                        Path tmpFile = Files.createTempFile("waybill_", ".html");
-                        Files.write(tmpFile, html.getBytes(StandardCharsets.UTF_8));
-                        Logger.debug("临时 HTML 文件: " + tmpFile.toAbsolutePath());
-
-                        try {
-                            // 根据 express_code 选择不同的解析器
-                            WaybillData parsedData;
-                            boolean isYunda = "YUNDA".equalsIgnoreCase(item.getExpressCode());
-                            Logger.info("快递公司: " + (isYunda ? "韵达" : item.getExpressCode()));
-
-                            if (isYunda) {
-                                // 韵达快递使用专用解析器
-                                parsedData = YundaHtmlParser.parse(tmpFile.toFile());
-                            } else {
-                                // 中通等其他快递使用默认解析器
-                                parsedData = HtmlParser.parse(tmpFile.toFile());
-                            }
-
-                            parsedData.sourceFile = data.sourceFile;
-                            String pdfProductInfo = data.getProductInfoForPdf();
-                            parsedData.productInfo = pdfProductInfo;
-                            // PDF 中脱敏，表格显示不脱敏；接口信息缺电话时保留 HTML 解析出的面单信息。
-                            parsedData.recipientInfo = buildPdfInfo(data.recipientInfo, parsedData.recipientInfo, true);
-                            parsedData.senderInfo = buildPdfInfo(data.senderInfo, parsedData.senderInfo, false);
-                            parsedData.recipientAddr = PrivacyMasker.maskPhonesInText(parsedData.recipientAddr);
-                            parsedData.senderAddr = PrivacyMasker.maskPhonesInText(parsedData.senderAddr);
-
-                            String filename = item.getWaybillId().replaceAll("[\\\\/:*?\"<>|]", "_") + ".pdf";
-                            File pdfFile = new File(outputDir, filename);
-                            Logger.info("生成 PDF: " + pdfFile.getAbsolutePath());
-
-                            boolean hasContent = (parsedData.trackingNumber != null && !parsedData.trackingNumber.isEmpty())
-                                    || !parsedData.hlines.isEmpty() || !parsedData.vlines.isEmpty() || !parsedData.images.isEmpty();
-
-                            if (hasContent) {
-                                // 根据快递公司选择不同的 PDF 生成器
-                                if (isYunda) {
-                                    yundaGenerator.generate(parsedData, pdfFile);
-                                } else {
-                                    generator.generate(parsedData, pdfFile);
-                                }
-                                Logger.info("PDF 生成成功: " + filename);
-                            } else {
-                                Logger.warn("面单内容为空，使用 HTML 直接生成");
-                                generator.generateFromHtml(tmpFile.toFile(), pdfFile, pdfProductInfo);
-                            }
-
-                            if (item.getWaybillDataId() != null) {
-                                try {
-                                    apiClient.markPrinted(item.getWaybillDataId());
-                                    Platform.runLater(() -> item.markPrinted());
-                                } catch (Exception ex) {
-                                    Logger.warn("标记已生成失败 (id=" + item.getWaybillDataId() + "): " + ex.getMessage());
-                                    Platform.runLater(() ->
-                                        logArea.appendText("⚠ 标记已生成失败 (id=" + item.getWaybillDataId() + "): " + ex.getMessage() + "\n")
-                                    );
-                                }
-                            } else {
-                                Platform.runLater(() ->
-                                    logArea.appendText("⚠ 无法标记已生成：waybillDataId 为空 (" + item.getWaybillId() + ")\n")
-                                );
-                            }
-
-                            Platform.runLater(() ->
-                                logArea.appendText("✓ " + filename + "\n")
-                            );
+                        setItemStatus(item, "生成中");
+                        File pdfFile = generatePdfForItem(item, outputDir, generator, yundaGenerator);
+                        markGenerated(item, pdfFile);
+                        appendLog("✓ " + pdfFile.getName() + "：PDF 生成成功\n");
+                        generatedPdfs.add(new GeneratedPdf(item, pdfFile));
+                        if (!printAfterGenerate) {
                             success++;
-                        } finally {
-                            try { Files.deleteIfExists(tmpFile); } catch (Exception ignored) {}
                         }
                     } catch (Exception ex) {
                         Logger.error("处理面单失败: " + item.getWaybillId(), ex);
-                        Platform.runLater(() ->
-                            logArea.appendText("✗ " + item.getWaybillId() + " - " + ex.getMessage() + "\n")
-                        );
+                        setItemStatus(item, "生成失败");
+                        appendLog("✗ " + item.getWaybillId() + " - " + safeMessage(ex) + "\n");
                     }
 
                     final int idx = i;
-                    Platform.runLater(() -> progressBar.setProgress((double) (idx + 1) / total));
+                    Platform.runLater(() -> progressBar.setProgress(printAfterGenerate
+                            ? (double) (idx + 1) / (total * 2)
+                            : (double) (idx + 1) / total));
+                }
+
+                if (printAfterGenerate) {
+                    for (int i = 0; i < generatedPdfs.size(); i++) {
+                        GeneratedPdf generatedPdf = generatedPdfs.get(i);
+                        WaybillItem item = generatedPdf.item();
+                        try {
+                            setItemStatus(item, "打印中");
+                            PdfPrinter.printPdf(generatedPdf.file(), printer);
+                            markPrinted(item);
+                            appendLog("✓ " + generatedPdf.file().getName() + "：打印成功\n");
+                            success++;
+                        } catch (Exception ex) {
+                            Logger.error("打印面单失败: " + item.getWaybillId(), ex);
+                            setItemStatus(item, "打印失败");
+                            appendLog("✗ " + item.getWaybillId() + " - " + safeMessage(ex) + "\n");
+                        }
+                        final int printIndex = i;
+                        Platform.runLater(() -> progressBar.setProgress(
+                                (double) (total + printIndex + 1) / (total * 2)));
+                    }
                 }
                 Logger.info("PDF 生成任务完成，成功: " + success + "/" + total);
                 return success;
@@ -309,20 +319,143 @@ public class MainController {
 
         task.setOnSucceeded(ev -> {
             int ok = task.getValue();
-            fetchStatusLabel.setText("完成！成功生成 " + ok + " / " + selected.size() + " 个 PDF");
+            fetchStatusLabel.setText(printAfterGenerate
+                    ? "完成！成功生成并打印 " + ok + " / " + selected.size() + " 个面单"
+                    : "完成！成功生成 " + ok + " / " + selected.size() + " 个 PDF");
             logArea.appendText("\nPDF 保存位置：" + outputDir.getAbsolutePath() + "\n");
+            progressBar.setProgress(1);
             progressBar.setVisible(false);
+            waybillTable.setDisable(false);
             btnFetch.setDisable(false);
-            btnGenerate.setDisable(false);
+            updateFetchActionState();
         });
 
         task.setOnFailed(ev -> {
             logArea.appendText("错误：" + task.getException().getMessage() + "\n");
             progressBar.setVisible(false);
+            waybillTable.setDisable(false);
             btnFetch.setDisable(false);
-            btnGenerate.setDisable(false);
+            updateFetchActionState();
         });
 
+        new Thread(task).start();
+    }
+
+    @FXML
+    private void onPreviewSelected() {
+        List<WaybillItem> selected = getSelectedWaybills();
+        if (selected.isEmpty()) {
+            showAlert("请至少勾选一条面单数据");
+            return;
+        }
+        // Previewing one PDF avoids opening a large number of external windows at once.
+        onPreviewItem(selected.get(0));
+    }
+
+    @FXML
+    private void onPrintSelected() {
+        List<WaybillItem> selected = getSelectedWaybills();
+        if (selected.isEmpty()) {
+            showAlert("请至少勾选一条面单数据");
+            return;
+        }
+        onPrintItems(selected);
+    }
+
+    private List<WaybillItem> getSelectedWaybills() {
+        return waybillItems.stream().filter(WaybillItem::isSelected).toList();
+    }
+
+    private void onPreviewItem(WaybillItem item) {
+        File pdfFile = resolvePdfFile(item);
+        if (pdfFile.isFile()) {
+            openPdf(pdfFile);
+            return;
+        }
+
+        setWaybillActionsDisabled(true);
+        setItemStatus(item, "生成中");
+        Task<File> task = new Task<>() {
+            @Override
+            protected File call() throws Exception {
+                File generated = generatePdfForItem(item, getPdfOutputDir(), new PdfGenerator(), new YundaPdfGenerator());
+                markGenerated(item, generated);
+                return generated;
+            }
+        };
+        task.setOnSucceeded(event -> {
+            setWaybillActionsDisabled(false);
+            updateFetchActionState();
+            openPdf(task.getValue());
+        });
+        task.setOnFailed(event -> {
+            setWaybillActionsDisabled(false);
+            updateFetchActionState();
+            setItemStatus(item, "生成失败");
+            showAlert("预览失败：" + safeMessage(task.getException()));
+        });
+        new Thread(task).start();
+    }
+
+    private void onPrintItems(List<WaybillItem> selected) {
+        if (!hasSelectedPrinter()) {
+            showAlert("请先选择打印机");
+            return;
+        }
+
+        String printer = printerComboBox.getValue();
+        File outputDir = getPdfOutputDir();
+        setWaybillActionsDisabled(true);
+        progressBar.setVisible(true);
+        progressBar.setProgress(0);
+        logArea.clear();
+
+        Task<Integer> task = new Task<>() {
+            @Override
+            protected Integer call() {
+                int success = 0;
+                for (int i = 0; i < selected.size(); i++) {
+                    WaybillItem item = selected.get(i);
+                    try {
+                        File pdfFile = resolvePdfFile(item);
+                        if (!pdfFile.isFile()) {
+                            setItemStatus(item, "生成中");
+                            pdfFile = generatePdfForItem(item, outputDir, new PdfGenerator(), new YundaPdfGenerator());
+                            markGenerated(item, pdfFile);
+                            appendLog("✓ " + pdfFile.getName() + "：PDF 生成成功\n");
+                        } else {
+                            item.attachPdfFile(pdfFile);
+                        }
+
+                        setItemStatus(item, "打印中");
+                        PdfPrinter.printPdf(pdfFile, printer);
+                        markPrinted(item);
+                        appendLog("✓ " + pdfFile.getName() + "：打印成功\n");
+                        success++;
+                    } catch (Exception ex) {
+                        setItemStatus(item, "打印失败");
+                        appendLog("✗ " + item.getWaybillId() + " - " + safeMessage(ex) + "\n");
+                    }
+                    final int index = i;
+                    Platform.runLater(() -> progressBar.setProgress((double) (index + 1) / selected.size()));
+                }
+                return success;
+            }
+        };
+        task.setOnSucceeded(event -> {
+            progressBar.setVisible(false);
+            waybillTable.setDisable(false);
+            btnFetch.setDisable(false);
+            updateFetchActionState();
+            showAlert("打印完成！成功: " + task.getValue() + " / " + selected.size());
+        });
+        task.setOnFailed(event -> {
+            progressBar.setVisible(false);
+            waybillTable.setDisable(false);
+            btnFetch.setDisable(false);
+            updateFetchActionState();
+            showAlert("打印错误：" + safeMessage(task.getException()));
+        });
         new Thread(task).start();
     }
 
@@ -338,7 +471,7 @@ public class MainController {
 
     @FXML
     private void onSelectUnprinted() {
-        waybillItems.forEach(i -> i.setSelected("-".equals(i.getLastGenTime())));
+        waybillItems.forEach(i -> i.setSelected(!"已打印".equals(i.getStatus())));
     }
 
     @FXML
@@ -408,6 +541,126 @@ public class MainController {
         return value != null && !value.trim().isEmpty();
     }
 
+    private File getPdfOutputDir() {
+        File outputDir = new File(System.getProperty("user.home"), "Desktop/面单PDF");
+        if (!outputDir.exists() && !outputDir.mkdirs() && !outputDir.isDirectory()) {
+            throw new IllegalStateException("无法创建 PDF 输出目录: " + outputDir.getAbsolutePath());
+        }
+        return outputDir;
+    }
+
+    private File generatePdfForItem(WaybillItem item, File outputDir,
+                                    PdfGenerator generator, YundaPdfGenerator yundaGenerator) throws Exception {
+        WaybillData data = item.getData();
+        if (data.printHtml == null || data.printHtml.isEmpty()) {
+            throw new IllegalArgumentException("无 print_html 数据");
+        }
+
+        byte[] htmlBytes = Base64.getDecoder().decode(data.printHtml);
+        String html = new String(htmlBytes, StandardCharsets.UTF_8);
+        Path tmpFile = Files.createTempFile("waybill_", ".html");
+        Files.write(tmpFile, html.getBytes(StandardCharsets.UTF_8));
+        Logger.debug("临时 HTML 文件: " + tmpFile.toAbsolutePath());
+
+        try {
+            boolean isYunda = "YUNDA".equalsIgnoreCase(item.getExpressCode());
+            WaybillData parsedData = isYunda
+                    ? YundaHtmlParser.parse(tmpFile.toFile())
+                    : HtmlParser.parse(tmpFile.toFile());
+
+            parsedData.sourceFile = data.sourceFile;
+            String pdfProductInfo = data.getProductInfoForPdf();
+            parsedData.productInfo = pdfProductInfo;
+            // PDF 中脱敏，表格显示不脱敏；接口信息缺电话时保留 HTML 解析出的面单信息。
+            parsedData.recipientInfo = buildPdfInfo(data.recipientInfo, parsedData.recipientInfo, true);
+            parsedData.senderInfo = buildPdfInfo(data.senderInfo, parsedData.senderInfo, false);
+            parsedData.recipientAddr = PrivacyMasker.maskPhonesInText(parsedData.recipientAddr);
+            parsedData.senderAddr = PrivacyMasker.maskPhonesInText(parsedData.senderAddr);
+
+            String filename = item.getWaybillId().replaceAll("[\\\\/:*?\"<>|]", "_") + ".pdf";
+            File pdfFile = new File(outputDir, filename);
+            Logger.info("生成 PDF: " + pdfFile.getAbsolutePath());
+
+            boolean hasContent = (parsedData.trackingNumber != null && !parsedData.trackingNumber.isEmpty())
+                    || !parsedData.hlines.isEmpty() || !parsedData.vlines.isEmpty() || !parsedData.images.isEmpty();
+            if (hasContent) {
+                if (isYunda) {
+                    yundaGenerator.generate(parsedData, pdfFile);
+                } else {
+                    generator.generate(parsedData, pdfFile);
+                }
+            } else {
+                Logger.warn("面单内容为空，使用 HTML 直接生成");
+                generator.generateFromHtml(tmpFile.toFile(), pdfFile, pdfProductInfo);
+            }
+            return pdfFile;
+        } finally {
+            try {
+                Files.deleteIfExists(tmpFile);
+            } catch (Exception ignored) {
+            }
+        }
+    }
+
+    private void markGenerated(WaybillItem item, File pdfFile) {
+        if (item.getWaybillDataId() != null) {
+            try {
+                apiClient.markPrinted(item.getWaybillDataId());
+            } catch (Exception ex) {
+                Logger.warn("标记已生成失败 (id=" + item.getWaybillDataId() + "): " + ex.getMessage());
+                appendLog("⚠ 标记已生成失败 (" + item.getWaybillId() + "): " + safeMessage(ex) + "\n");
+            }
+        } else {
+            appendLog("⚠ 无法标记已生成：waybillDataId 为空 (" + item.getWaybillId() + ")\n");
+        }
+        Platform.runLater(() -> item.markGenerated(pdfFile));
+    }
+
+    private void markPrinted(WaybillItem item) {
+        Platform.runLater(item::markPrinted);
+    }
+
+    private void setItemStatus(WaybillItem item, String status) {
+        Platform.runLater(() -> item.setStatus(status));
+    }
+
+    private void appendLog(String message) {
+        Platform.runLater(() -> logArea.appendText(message));
+    }
+
+    private File resolvePdfFile(WaybillItem item) {
+        if (item.getPdfFile() != null) {
+            return item.getPdfFile();
+        }
+        File file = new File(getPdfOutputDir(),
+                item.getWaybillId().replaceAll("[\\\\/:*?\"<>|]", "_") + ".pdf");
+        if (file.isFile()) {
+            item.attachPdfFile(file);
+            Platform.runLater(() -> item.setStatus("已生成"));
+        }
+        return file;
+    }
+
+    private void openPdf(File pdfFile) {
+        try {
+            PdfPreviewer.open(pdfFile);
+            fetchStatusLabel.setText("已打开预览：" + pdfFile.getName());
+        } catch (Exception ex) {
+            showAlert("打开 PDF 失败：" + safeMessage(ex));
+        }
+    }
+
+    private boolean hasSelectedPrinter() {
+        return printerComboBox.getValue() != null && !printerComboBox.getValue().isBlank();
+    }
+
+    private String safeMessage(Throwable throwable) {
+        if (throwable == null) return "未知错误";
+        return throwable.getMessage() == null || throwable.getMessage().isBlank()
+                ? throwable.getClass().getSimpleName()
+                : throwable.getMessage();
+    }
+
     // ==================== Print ====================
 
     private void loadPrinters() {
@@ -421,10 +674,61 @@ public class MainController {
             List<String> printers = task.getValue();
             printerComboBox.getItems().setAll(printers);
             if (!printers.isEmpty()) {
-                printerComboBox.getSelectionModel().selectFirst();
+                String lastPrinter = PrinterPreferences.getLastPrinter();
+                if (lastPrinter != null && printers.contains(lastPrinter)) {
+                    printerComboBox.getSelectionModel().select(lastPrinter);
+                    printerStatusLabel.setText("已找到 " + printers.size() + " 台打印机");
+                } else {
+                    printerComboBox.getSelectionModel().selectFirst();
+                    if (lastPrinter != null && !lastPrinter.isBlank()) {
+                        printerStatusLabel.setText("上次打印机不可用，已切换到当前可用打印机");
+                    } else {
+                        printerStatusLabel.setText("已找到 " + printers.size() + " 台打印机");
+                    }
+                }
+            } else {
+                printerStatusLabel.setText("未发现可用打印机");
             }
+            updatePrinterLabels();
         });
+        task.setOnFailed(e -> printerStatusLabel.setText("读取打印机失败：" + safeMessage(task.getException())));
         new Thread(task).start();
+    }
+
+    @FXML
+    private void onRefreshPrinters() {
+        printerStatusLabel.setText("正在读取打印机...");
+        loadPrinters();
+    }
+
+    private void updatePrinterLabels() {
+        String printer = printerComboBox.getValue();
+        printTabPrinterLabel.setText(printer == null || printer.isBlank()
+                ? "请在“拉取面单”页选择"
+                : "当前使用：" + printer);
+    }
+
+    private void updateFetchActionState() {
+        boolean hasItems = !waybillItems.isEmpty();
+        btnGenerate.setDisable(!hasItems);
+        btnGenerateAndPrint.setDisable(!hasItems);
+        btnPreviewSelected.setDisable(!hasItems);
+        btnPrintSelected.setDisable(!hasItems);
+    }
+
+    private void restoreFetchActions() {
+        waybillTable.setDisable(false);
+        btnFetch.setDisable(false);
+        updateFetchActionState();
+    }
+
+    private void setWaybillActionsDisabled(boolean disabled) {
+        btnFetch.setDisable(disabled);
+        btnGenerate.setDisable(disabled);
+        btnGenerateAndPrint.setDisable(disabled);
+        btnPreviewSelected.setDisable(disabled);
+        btnPrintSelected.setDisable(disabled);
+        waybillTable.setDisable(disabled);
     }
 
     @FXML
@@ -517,6 +821,9 @@ public class MainController {
         alert.setHeaderText(null);
         alert.setContentText(msg);
         alert.showAndWait();
+    }
+
+    private record GeneratedPdf(WaybillItem item, File file) {
     }
 
     // ==================== PdfFileItem ====================

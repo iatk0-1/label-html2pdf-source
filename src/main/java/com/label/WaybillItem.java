@@ -3,6 +3,7 @@ package com.label;
 import javafx.beans.property.SimpleBooleanProperty;
 import javafx.beans.property.SimpleStringProperty;
 
+import java.io.File;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -31,12 +32,14 @@ public class WaybillItem {
     private final SimpleStringProperty waybillCreatedTime = new SimpleStringProperty();   // 面单创建时间
     private final SimpleStringProperty orderCreatedTime = new SimpleStringProperty();     // 订单创建时间
     private final SimpleStringProperty lastGenTime = new SimpleStringProperty();          // 上次生成PDF
+    private final SimpleStringProperty status = new SimpleStringProperty();
 
     private WaybillData data;
     // Raw time strings for filtering (keep original ISO format for parsing)
     private String rawWaybillCreatedAt;
     private String rawOrderCreatedAt;
     private String rawLastPrintedAt;
+    private File pdfFile;
 
     public WaybillItem(WaybillData data) {
         this.data = data;
@@ -51,6 +54,7 @@ public class WaybillItem {
         this.waybillCreatedTime.set(formatTime(data.waybillCreatedAt));
         this.orderCreatedTime.set(formatTime(data.orderCreatedAt));
         this.lastGenTime.set(formatTime(data.lastPrintedAt));
+        this.status.set(data.lastPrintedAt == null || data.lastPrintedAt.isBlank() ? "未生成" : "已生成");
     }
 
     private static String formatTime(String raw) {
@@ -142,10 +146,32 @@ public class WaybillItem {
     public String getLastGenTime() { return lastGenTime.get(); }
     public SimpleStringProperty lastGenTimeProperty() { return lastGenTime; }
 
+    public String getStatus() { return status.get(); }
+    public SimpleStringProperty statusProperty() { return status; }
+
+    public File getPdfFile() { return pdfFile; }
+
+    public void attachPdfFile(File file) {
+        this.pdfFile = file;
+    }
+
+    public void markGenerated(File file) {
+        this.pdfFile = file;
+        String now = java.time.LocalDateTime.now().toString();
+        this.rawLastPrintedAt = now;
+        this.lastGenTime.set(formatTime(now));
+        this.status.set("已生成");
+    }
+
+    public void setStatus(String value) {
+        this.status.set(value == null || value.isBlank() ? "未生成" : value);
+    }
+
     public void markPrinted() {
         String now = java.time.LocalDateTime.now().toString();
         this.rawLastPrintedAt = now;
         this.lastGenTime.set(formatTime(now));
+        this.status.set("已打印");
     }
 
     public WaybillData getData() { return data; }

@@ -22,8 +22,18 @@
                 <HBox spacing="10" alignment="CENTER_LEFT">
                     <Button fx:id="btnFetch" text="拉取面单" onAction="#onFetch" styleClass="btn-primary"/>
                     <Button fx:id="btnGenerate" text="生成PDF" onAction="#onGenerate" disable="true" styleClass="btn-accent"/>
+                    <Button fx:id="btnGenerateAndPrint" text="生成并打印" onAction="#onGenerateAndPrint" disable="true" styleClass="btn-accent"/>
+                    <Button fx:id="btnPreviewSelected" text="预览首个选中" onAction="#onPreviewSelected" disable="true"/>
+                    <Button fx:id="btnPrintSelected" text="打印选中" onAction="#onPrintSelected" disable="true" styleClass="btn-accent"/>
                     <Region HBox.hgrow="ALWAYS"/>
                     <Label fx:id="fetchStatusLabel" styleClass="status-label"/>
+                </HBox>
+
+                <HBox spacing="8" alignment="CENTER_LEFT">
+                    <Label text="打印机:"/>
+                    <ComboBox fx:id="printerComboBox" prefWidth="360" promptText="选择打印机"/>
+                    <Button text="刷新打印机" onAction="#onRefreshPrinters"/>
+                    <Label fx:id="printerStatusLabel" styleClass="sub-label"/>
                 </HBox>
 
                 <!-- 时间筛选：第一行 — 面单创建时间 -->
@@ -66,6 +76,8 @@
                         <TableColumn fx:id="waybillCreatedTimeCol" text="面单创建" prefWidth="110"/>
                         <TableColumn fx:id="orderCreatedTimeCol" text="订单创建" prefWidth="110"/>
                         <TableColumn fx:id="lastGenTimeCol" text="上次生成PDF" prefWidth="110"/>
+                        <TableColumn fx:id="statusCol" text="状态" prefWidth="85"/>
+                        <TableColumn fx:id="actionCol" text="操作" prefWidth="135"/>
                     </columns>
                 </TableView>
 
@@ -89,7 +101,7 @@
 
                 <HBox spacing="10" alignment="CENTER_LEFT">
                     <Label text="打印机:"/>
-                    <ComboBox fx:id="printerComboBox" prefWidth="400"/>
+                    <Label fx:id="printTabPrinterLabel" text="请在“拉取面单”页选择" styleClass="sub-label"/>
                 </HBox>
 
                 <HBox spacing="10" alignment="CENTER_LEFT">
