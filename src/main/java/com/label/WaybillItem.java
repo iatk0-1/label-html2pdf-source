@@ -38,6 +38,7 @@ public class WaybillItem {
     // Raw time strings for filtering (keep original ISO format for parsing)
     private String rawWaybillCreatedAt;
     private String rawOrderCreatedAt;
+    private String rawLastGeneratedAt;
     private String rawLastPrintedAt;
     private File pdfFile;
 
@@ -50,11 +51,21 @@ public class WaybillItem {
         this.remarks.set(data.getRemarksForDisplay());
         this.rawWaybillCreatedAt = data.waybillCreatedAt;
         this.rawOrderCreatedAt = data.orderCreatedAt;
+        this.rawLastGeneratedAt = data.lastGeneratedAt;
         this.rawLastPrintedAt = data.lastPrintedAt;
         this.waybillCreatedTime.set(formatTime(data.waybillCreatedAt));
         this.orderCreatedTime.set(formatTime(data.orderCreatedAt));
-        this.lastGenTime.set(formatTime(data.lastPrintedAt));
-        this.status.set(data.lastPrintedAt == null || data.lastPrintedAt.isBlank() ? "未生成" : "已生成");
+        this.lastGenTime.set(formatTime(data.lastGeneratedAt));
+        this.status.set(initialStatus(data));
+    }
+
+    private static String initialStatus(WaybillData data) {
+        return switch (data.printStatus == null ? "" : data.printStatus.trim().toUpperCase()) {
+            case "PRINTED" -> "已打印";
+            case "FAILED" -> "打印失败";
+            case "GENERATED" -> "已生成";
+            default -> data.lastGeneratedAt == null || data.lastGeneratedAt.isBlank() ? "未生成" : "已生成";
+        };
     }
 
     private static String formatTime(String raw) {
@@ -158,7 +169,7 @@ public class WaybillItem {
     public void markGenerated(File file) {
         this.pdfFile = file;
         String now = java.time.LocalDateTime.now().toString();
-        this.rawLastPrintedAt = now;
+        this.rawLastGeneratedAt = now;
         this.lastGenTime.set(formatTime(now));
         this.status.set("已生成");
     }
@@ -170,8 +181,11 @@ public class WaybillItem {
     public void markPrinted() {
         String now = java.time.LocalDateTime.now().toString();
         this.rawLastPrintedAt = now;
-        this.lastGenTime.set(formatTime(now));
         this.status.set("已打印");
+    }
+
+    public void markPrintFailed() {
+        this.status.set("打印失败");
     }
 
     public WaybillData getData() { return data; }

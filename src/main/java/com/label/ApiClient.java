@@ -133,7 +133,9 @@ public class ApiClient {
         // 读取时间字段
         data.waybillCreatedAt = getTimeString(map, "createdAt");
         data.orderCreatedAt = getTimeString(map, "orderCreatedAt");
+        data.lastGeneratedAt = getFirstTimeString(map, "lastGeneratedAt", "lastPrintedAt");
         data.lastPrintedAt = getTimeString(map, "lastPrintedAt");
+        data.printStatus = getString(map, "printStatus");
 
         data.sourceFile = "API-" + map.get("waybillId");
         return data;
@@ -165,6 +167,14 @@ public class ApiClient {
         Object value = map.get(key);
         if (value == null) return null;
         return value instanceof String ? ((String) value).trim() : String.valueOf(value);
+    }
+
+    private static String getFirstTimeString(Map<String, Object> map, String... keys) {
+        for (String key : keys) {
+            String value = getTimeString(map, key);
+            if (value != null && !value.isBlank()) return value;
+        }
+        return null;
     }
 
     private static List<WaybillOrderItem> parseOrderItems(Object rawValue) {
@@ -209,11 +219,24 @@ public class ApiClient {
         }
     }
 
-    /**
-     * 标记运单已打印
-     */
+    /** 标记 PDF 已生成，但尚未实际打印。 */
+    public void markGenerated(Long waybillDataId) throws IOException, InterruptedException {
+        postWaybillStatus(waybillDataId, "mark-generated");
+    }
+
+    /** 标记运单已实际打印成功。 */
     public void markPrinted(Long waybillDataId) throws IOException, InterruptedException {
-        String url = baseUrl + "/api/v1/waybills/" + waybillDataId + "/mark-printed";
+        postWaybillStatus(waybillDataId, "mark-printed");
+    }
+
+    /** 标记运单打印失败。 */
+    public void markPrintFailed(Long waybillDataId) throws IOException, InterruptedException {
+        postWaybillStatus(waybillDataId, "mark-print-failed");
+    }
+
+    private void postWaybillStatus(Long waybillDataId, String action)
+            throws IOException, InterruptedException {
+        String url = baseUrl + "/api/v1/waybills/" + waybillDataId + "/" + action;
         Logger.logHttpRequest("POST", url, null);
 
         HttpRequest request = HttpRequest.newBuilder()
@@ -226,11 +249,11 @@ public class ApiClient {
         Logger.logHttpResponse("POST", url, response.statusCode(), response.body());
 
         if (response.statusCode() != 204) {
-            Logger.error("标记已打印失败：HTTP " + response.statusCode());
-            throw new IOException("标记已打印失败：HTTP " + response.statusCode());
+            Logger.error("更新面单打印状态失败：HTTP " + response.statusCode());
+            throw new IOException("更新面单打印状态失败：HTTP " + response.statusCode());
         }
 
-        Logger.info("成功标记运单 " + waybillDataId + " 为已打印");
+        Logger.info("成功更新运单 " + waybillDataId + " 状态：" + action);
     }
 
     public Long getUserId() {

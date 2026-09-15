@@ -30,7 +30,9 @@ public class WaybillData {
     public String printHtml;  // 微信返回的面单HTML（base64编码）
     public String waybillCreatedAt;  // 面单创建时间（null 表示无）
     public String orderCreatedAt;    // 订单创建时间（null 表示无）
-    public String lastPrintedAt;     // 上次生成PDF时间（null 表示未打印）
+    public String lastGeneratedAt;   // 上次生成PDF时间
+    public String lastPrintedAt;     // 上次实际打印成功时间
+    public String printStatus;       // GENERATED / PRINTED / FAILED
 
     public static class ImageInfo {
         public byte[] data;

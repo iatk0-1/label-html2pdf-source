@@ -304,6 +304,7 @@ public class MainController {
                             success++;
                         } catch (Exception ex) {
                             Logger.error("打印面单失败: " + item.getWaybillId(), ex);
+                            markPrintFailed(item);
                             setItemStatus(item, "打印失败");
                             appendLog("✗ " + item.getWaybillId() + " - " + safeMessage(ex) + "\n");
                         }
@@ -416,6 +417,7 @@ public class MainController {
                 int success = 0;
                 for (int i = 0; i < selected.size(); i++) {
                     WaybillItem item = selected.get(i);
+                    boolean printStarted = false;
                     try {
                         File pdfFile = resolvePdfFile(item);
                         if (!pdfFile.isFile()) {
@@ -428,11 +430,15 @@ public class MainController {
                         }
 
                         setItemStatus(item, "打印中");
+                        printStarted = true;
                         PdfPrinter.printPdf(pdfFile, printer);
                         markPrinted(item);
                         appendLog("✓ " + pdfFile.getName() + "：打印成功\n");
                         success++;
                     } catch (Exception ex) {
+                        if (printStarted) {
+                            markPrintFailed(item);
+                        }
                         setItemStatus(item, "打印失败");
                         appendLog("✗ " + item.getWaybillId() + " - " + safeMessage(ex) + "\n");
                     }
@@ -605,10 +611,10 @@ public class MainController {
     private void markGenerated(WaybillItem item, File pdfFile) {
         if (item.getWaybillDataId() != null) {
             try {
-                apiClient.markPrinted(item.getWaybillDataId());
+                apiClient.markGenerated(item.getWaybillDataId());
             } catch (Exception ex) {
-                Logger.warn("标记已生成失败 (id=" + item.getWaybillDataId() + "): " + ex.getMessage());
-                appendLog("⚠ 标记已生成失败 (" + item.getWaybillId() + "): " + safeMessage(ex) + "\n");
+                Logger.warn("同步已生成状态失败 (id=" + item.getWaybillDataId() + "): " + ex.getMessage());
+                appendLog("⚠ 同步已生成状态失败 (" + item.getWaybillId() + "): " + safeMessage(ex) + "\n");
             }
         } else {
             appendLog("⚠ 无法标记已生成：waybillDataId 为空 (" + item.getWaybillId() + ")\n");
@@ -617,7 +623,27 @@ public class MainController {
     }
 
     private void markPrinted(WaybillItem item) {
+        if (item.getWaybillDataId() != null) {
+            try {
+                apiClient.markPrinted(item.getWaybillDataId());
+            } catch (Exception ex) {
+                Logger.warn("同步打印成功状态失败 (id=" + item.getWaybillDataId() + "): " + ex.getMessage());
+                appendLog("⚠ 同步打印成功状态失败 (" + item.getWaybillId() + "): " + safeMessage(ex) + "\n");
+            }
+        }
         Platform.runLater(item::markPrinted);
+    }
+
+    private void markPrintFailed(WaybillItem item) {
+        if (item.getWaybillDataId() != null) {
+            try {
+                apiClient.markPrintFailed(item.getWaybillDataId());
+            } catch (Exception ex) {
+                Logger.warn("同步打印失败状态失败 (id=" + item.getWaybillDataId() + "): " + ex.getMessage());
+                appendLog("⚠ 同步打印失败状态失败 (" + item.getWaybillId() + "): " + safeMessage(ex) + "\n");
+            }
+        }
+        Platform.runLater(item::markPrintFailed);
     }
 
     private void setItemStatus(WaybillItem item, String status) {
