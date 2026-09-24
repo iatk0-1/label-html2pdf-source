@@ -140,8 +140,6 @@ public class MainController {
             {
                 generateButton.setOnAction(event -> {
                     WaybillItem row = getTableView().getItems().get(getIndex());
-                    row.setSelected(true);
-                    selectedTable.requestFocus();
                     runGenerateTask(List.of(row));
                 });
                 printButton.setOnAction(event -> {
@@ -150,8 +148,6 @@ public class MainController {
                         return;
                     }
                     WaybillItem row = getTableView().getItems().get(getIndex());
-                    row.setSelected(true);
-                    selectedTable.requestFocus();
                     onPrintItems(List.of(row));
                 });
             }
