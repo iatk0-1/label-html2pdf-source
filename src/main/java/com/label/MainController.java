@@ -9,6 +9,7 @@ import javafx.concurrent.Task;
 import javafx.fxml.FXML;
 import javafx.scene.control.*;
 import javafx.scene.control.cell.CheckBoxTableCell;
+import javafx.scene.layout.HBox;
 import javafx.stage.DirectoryChooser;
 
 import java.io.File;
@@ -46,6 +47,7 @@ public class MainController {
     @FXML private TableColumn<WaybillItem, String> orderCreatedTimeCol;
     @FXML private TableColumn<WaybillItem, String> lastGenTimeCol;
     @FXML private TableColumn<WaybillItem, String> statusCol;
+    @FXML private TableColumn<WaybillItem, Void> actionCol;
     @FXML private Button btnSelectUnprinted;
     @FXML private TextArea logArea;
     @FXML private DatePicker waybillDateFrom;
@@ -128,6 +130,38 @@ public class MainController {
         orderCreatedTimeCol.setCellValueFactory(cellData -> cellData.getValue().orderCreatedTimeProperty());
         lastGenTimeCol.setCellValueFactory(cellData -> cellData.getValue().lastGenTimeProperty());
         statusCol.setCellValueFactory(cellData -> cellData.getValue().statusProperty());
+        actionCol.setSortable(false);
+        actionCol.setReorderable(false);
+        actionCol.setCellFactory(column -> new TableCell<>() {
+            private final Button generateButton = new Button("生成");
+            private final Button printButton = new Button("打印");
+            private final HBox buttons = new HBox(4, generateButton, printButton);
+
+            {
+                generateButton.setOnAction(event -> {
+                    WaybillItem row = getTableView().getItems().get(getIndex());
+                    row.setSelected(true);
+                    selectedTable.requestFocus();
+                    runGenerateTask(List.of(row));
+                });
+                printButton.setOnAction(event -> {
+                    if (!hasSelectedPrinter()) {
+                        showAlert("请先选择打印机");
+                        return;
+                    }
+                    WaybillItem row = getTableView().getItems().get(getIndex());
+                    row.setSelected(true);
+                    selectedTable.requestFocus();
+                    onPrintItems(List.of(row));
+                });
+            }
+
+            @Override
+            protected void updateItem(Void item, boolean empty) {
+                super.updateItem(item, empty);
+                setGraphic(empty ? null : buttons);
+            }
+        });
         waybillTable.setItems(waybillItems);
         waybillTable.setSortPolicy(table -> {
             if (apiClient != null && !loadingPage) loadPage(0, buildQuery(0));
@@ -243,6 +277,7 @@ public class MainController {
         long version = ++requestVersion;
         loadingPage = true;
         btnFetch.setDisable(true);
+        waybillTable.setDisable(true);
         previousPageButton.setDisable(true);
         nextPageButton.setDisable(true);
         fetchStatusLabel.setText("正在查询...");
@@ -272,6 +307,7 @@ public class MainController {
             fetchStatusLabel.setText("查询失败：" + safeMessage(task.getException()));
             loadingPage = false;
             btnFetch.setDisable(false);
+            waybillTable.setDisable(false);
             updatePagination();
         });
         new Thread(task, "waybill-page").start();
@@ -280,6 +316,7 @@ public class MainController {
     private void finishPageLoad() {
         loadingPage = false;
         btnFetch.setDisable(false);
+        waybillTable.setDisable(false);
         fetchStatusLabel.setText("共 " + totalItems + " 条，当前 " + waybillItems.size() + " 条");
         updatePagination();
         updateFetchActionState();

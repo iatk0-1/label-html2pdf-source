@@ -82,6 +82,7 @@
                         <TableColumn fx:id="orderCreatedTimeCol" text="订单创建" prefWidth="110"/>
                         <TableColumn fx:id="lastGenTimeCol" text="上次生成PDF" prefWidth="110"/>
                         <TableColumn fx:id="statusCol" text="状态" prefWidth="85"/>
+                        <TableColumn fx:id="actionCol" text="操作" prefWidth="140" sortable="false"/>
                     </columns>
                 </TableView>
 
