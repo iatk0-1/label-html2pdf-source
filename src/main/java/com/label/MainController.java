@@ -9,7 +9,6 @@ import javafx.concurrent.Task;
 import javafx.fxml.FXML;
 import javafx.scene.control.*;
 import javafx.scene.control.cell.CheckBoxTableCell;
-import javafx.scene.layout.HBox;
 import javafx.stage.DirectoryChooser;
 
 import java.io.File;
@@ -19,17 +18,18 @@ import java.nio.file.Path;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 public class MainController {
 
     // === Fetch tab ===
     @FXML private Button btnFetch;
     @FXML private Button btnGenerate;
-    @FXML private Button btnGenerateAndPrint;
-    @FXML private Button btnPreviewSelected;
     @FXML private Button btnPrintSelected;
     @FXML private Label fetchStatusLabel;
     @FXML private Label printerStatusLabel;
@@ -46,7 +46,6 @@ public class MainController {
     @FXML private TableColumn<WaybillItem, String> orderCreatedTimeCol;
     @FXML private TableColumn<WaybillItem, String> lastGenTimeCol;
     @FXML private TableColumn<WaybillItem, String> statusCol;
-    @FXML private TableColumn<WaybillItem, Void> actionCol;
     @FXML private Button btnSelectUnprinted;
     @FXML private TextArea logArea;
     @FXML private DatePicker waybillDateFrom;
@@ -61,6 +60,21 @@ public class MainController {
     @FXML private DatePicker orderDateTo;
     @FXML private ComboBox<String> orderHourTo;
     @FXML private ComboBox<String> orderMinuteTo;
+    @FXML private TextField keywordField;
+    @FXML private ComboBox<String> printFilterBox;
+    @FXML private ComboBox<String> pageSizeBox;
+    @FXML private ComboBox<String> orderQuickRange;
+    @FXML private ComboBox<String> waybillQuickRange;
+    @FXML private Button previousPageButton;
+    @FXML private Button nextPageButton;
+    @FXML private Label pageLabel;
+    @FXML private Label selectedCountLabel;
+    @FXML private TableView<WaybillItem> selectedTable;
+    @FXML private TableColumn<WaybillItem, String> selectedWaybillCol;
+    @FXML private TableColumn<WaybillItem, String> selectedOrderCol;
+    @FXML private TableColumn<WaybillItem, String> selectedPdfCol;
+    @FXML private TableColumn<WaybillItem, String> selectedPrintCol;
+    @FXML private TableColumn<WaybillItem, Void> selectedRemoveCol;
 
     // === Print tab ===
     @FXML private ComboBox<String> printerComboBox;
@@ -76,23 +90,30 @@ public class MainController {
 
     private ApiClient apiClient;
     private final ObservableList<WaybillItem> waybillItems = FXCollections.observableArrayList();
-    private final List<WaybillItem> allItems = new ArrayList<>();
+    private final ObservableList<WaybillItem> selectedItems = FXCollections.observableArrayList();
+    private final Map<Long, WaybillItem> selectedById = new LinkedHashMap<>();
+    private int currentPage = 0;
+    private long totalItems = 0;
+    private ApiClient.WaybillQuery activeQuery;
+    private boolean loadingPage = false;
+    private boolean processing = false;
+    private long requestVersion = 0;
     private final ObservableList<PdfFileItem> pdfItems = FXCollections.observableArrayList();
     private File selectedPrintFolder;
 
     public void setApiClient(ApiClient client) {
         this.apiClient = client;
+        loadPage(0, buildQuery(0));
     }
 
     @FXML
     public void initialize() {
-        sequenceCol.setSortable(false);
         sequenceCol.setReorderable(false);
         sequenceCol.setCellFactory(column -> new TableCell<>() {
             @Override
             protected void updateItem(Void item, boolean empty) {
                 super.updateItem(item, empty);
-                setText(empty ? null : Integer.toString(getIndex() + 1));
+                setText(empty ? null : Integer.toString(currentPage * Integer.parseInt(pageSizeBox.getValue()) + getIndex() + 1));
             }
         });
 
@@ -107,31 +128,35 @@ public class MainController {
         orderCreatedTimeCol.setCellValueFactory(cellData -> cellData.getValue().orderCreatedTimeProperty());
         lastGenTimeCol.setCellValueFactory(cellData -> cellData.getValue().lastGenTimeProperty());
         statusCol.setCellValueFactory(cellData -> cellData.getValue().statusProperty());
-        actionCol.setSortable(false);
-        actionCol.setReorderable(false);
-        actionCol.setCellFactory(column -> new TableCell<>() {
-            private final Button previewButton = new Button("预览");
-            private final Button printButton = new Button("打印");
-            private final HBox buttons = new HBox(4, previewButton, printButton);
+        waybillTable.setItems(waybillItems);
+        waybillTable.setSortPolicy(table -> {
+            if (apiClient != null && !loadingPage) loadPage(0, buildQuery(0));
+            return true;
+        });
 
-            {
-                previewButton.setOnAction(event -> {
-                    WaybillItem item = getTableView().getItems().get(getIndex());
-                    onPreviewItem(item);
-                });
-                printButton.setOnAction(event -> {
-                    WaybillItem item = getTableView().getItems().get(getIndex());
-                    onPrintItems(List.of(item));
-                });
-            }
-
-            @Override
-            protected void updateItem(Void item, boolean empty) {
+        selectedWaybillCol.setCellValueFactory(c -> c.getValue().waybillIdProperty());
+        selectedOrderCol.setCellValueFactory(c -> c.getValue().orderNumbersProperty());
+        selectedPdfCol.setCellValueFactory(c -> c.getValue().pdfStatusProperty());
+        selectedPrintCol.setCellValueFactory(c -> c.getValue().printResultProperty());
+        selectedRemoveCol.setSortable(false);
+        selectedRemoveCol.setCellFactory(column -> new TableCell<>() {
+            private final Button remove = new Button("移除");
+            { remove.setOnAction(event -> getTableView().getItems().get(getIndex()).setSelected(false)); }
+            @Override protected void updateItem(Void item, boolean empty) {
                 super.updateItem(item, empty);
-                setGraphic(empty ? null : buttons);
+                setGraphic(empty ? null : remove);
             }
         });
-        waybillTable.setItems(waybillItems);
+        selectedTable.setItems(selectedItems);
+        printFilterBox.getItems().addAll("全部", "未打印", "已打印", "未生成", "已生成");
+        printFilterBox.setValue("全部");
+        pageSizeBox.getItems().addAll("20", "50", "100", "200");
+        pageSizeBox.setValue("20");
+        pageSizeBox.valueProperty().addListener((obs, oldValue, newValue) -> {
+            if (apiClient != null && newValue != null) loadPage(0, buildQuery(0));
+        });
+        orderQuickRange.getItems().addAll("近3天", "近7天", "近一个月");
+        waybillQuickRange.getItems().addAll("近3天", "近7天", "近一个月");
 
         pdfSelectCol.setCellValueFactory(cellData -> cellData.getValue().selectedProperty());
         pdfSelectCol.setCellFactory(CheckBoxTableCell.forTableColumn(pdfSelectCol));
@@ -167,90 +192,149 @@ public class MainController {
         }
     }
 
-    // ==================== Fetch ====================
+    // ==================== 分页查询 ====================
 
-    @FXML
-    private void onFetch() {
-        Logger.info("用户点击拉取面单按钮");
-        setWaybillActionsDisabled(true);
-        logArea.clear();
-        fetchStatusLabel.setText("正在拉取面单数据...");
-        waybillItems.clear();
+    private ApiClient.WaybillQuery buildQuery(int page) {
+        String sortBy = "waybillCreatedAt";
+        String direction = "desc";
+        if (!waybillTable.getSortOrder().isEmpty()) {
+            TableColumn<WaybillItem, ?> column = waybillTable.getSortOrder().get(0);
+            if (column == sequenceCol) sortBy = "sequence";
+            else if (column == orderNumberCol) sortBy = "orderNumber";
+            else if (column == waybillCol) sortBy = "waybillId";
+            else if (column == recipientCol) sortBy = "recipientName";
+            else if (column == addressCol) sortBy = "recipientAddress";
+            else if (column == remarkCol) sortBy = "remark";
+            else if (column == waybillCreatedTimeCol) sortBy = "waybillCreatedAt";
+            else if (column == orderCreatedTimeCol) sortBy = "orderCreatedAt";
+            else if (column == lastGenTimeCol) sortBy = "lastGeneratedAt";
+            else if (column == statusCol) sortBy = "printStatus";
+            direction = column.getSortType() == TableColumn.SortType.ASCENDING ? "asc" : "desc";
+        }
+        String filter = switch (printFilterBox.getValue()) {
+            case "未打印" -> "UNPRINTED";
+            case "已打印" -> "PRINTED";
+            case "未生成" -> "NOT_GENERATED";
+            case "已生成" -> "GENERATED";
+            default -> "ALL";
+        };
+        return new ApiClient.WaybillQuery(page, Integer.parseInt(pageSizeBox.getValue()),
+                keywordField.getText().trim(), filter,
+                dateTimeParam(orderDateFrom, orderHourFrom, orderMinuteFrom),
+                dateTimeParam(orderDateTo, orderHourTo, orderMinuteTo),
+                dateTimeParam(waybillDateFrom, waybillHourFrom, waybillMinuteFrom),
+                dateTimeParam(waybillDateTo, waybillHourTo, waybillMinuteTo), sortBy, direction);
+    }
 
-        Task<List<WaybillData>> task = new Task<>() {
-            @Override
-            protected List<WaybillData> call() throws Exception {
-                return apiClient.fetchWaybills();
+    private static String dateTimeParam(DatePicker date, ComboBox<String> hour, ComboBox<String> minute) {
+        LocalDateTime value = combineDateTime(date.getValue(), hour.getValue(), minute.getValue());
+        return value == null ? null : value.toString();
+    }
+
+    private void loadPage(int page, ApiClient.WaybillQuery query) {
+        if (apiClient == null) return;
+        if (processing) return;
+        if (query.orderFrom() != null && query.orderTo() != null && query.orderFrom().compareTo(query.orderTo()) > 0
+                || query.waybillFrom() != null && query.waybillTo() != null
+                && query.waybillFrom().compareTo(query.waybillTo()) > 0) {
+            showAlert("开始时间不能晚于结束时间");
+            return;
+        }
+        long version = ++requestVersion;
+        loadingPage = true;
+        btnFetch.setDisable(true);
+        previousPageButton.setDisable(true);
+        nextPageButton.setDisable(true);
+        fetchStatusLabel.setText("正在查询...");
+        Task<ApiClient.WaybillPage> task = new Task<>() {
+            @Override protected ApiClient.WaybillPage call() throws Exception {
+                return apiClient.fetchWaybillPage(query);
             }
         };
-
-        task.setOnSucceeded(ev -> {
-            List<WaybillData> list = task.getValue();
-            fetchStatusLabel.setText("拉取成功，共 " + list.size() + " 条面单数据");
-            Logger.info("拉取面单成功，共 " + list.size() + " 条");
-
-            allItems.clear();
-            for (WaybillData wd : list) {
-                allItems.add(new WaybillItem(wd));
+        task.setOnSucceeded(event -> {
+            if (version != requestVersion) return;
+            ApiClient.WaybillPage result = task.getValue();
+            activeQuery = query;
+            currentPage = page;
+            totalItems = result.total();
+            List<WaybillItem> rows = new ArrayList<>();
+            for (WaybillData data : result.items()) {
+                WaybillItem chosen = selectedById.get(data.id);
+                WaybillItem item = chosen != null ? chosen : new WaybillItem(data);
+                if (chosen == null) watchSelection(item);
+                rows.add(item);
             }
-
-            applyFilter();
-
-            restoreFetchActions();
+            waybillItems.setAll(rows);
+            finishPageLoad();
         });
-
-        task.setOnFailed(ev -> {
-            fetchStatusLabel.setText("拉取失败");
-            String errorMsg = task.getException().getMessage();
-            logArea.appendText("错误：" + errorMsg + "\n");
-            Logger.error("拉取面单失败: " + errorMsg, task.getException());
-            restoreFetchActions();
+        task.setOnFailed(event -> {
+            if (version != requestVersion) return;
+            fetchStatusLabel.setText("查询失败：" + safeMessage(task.getException()));
+            loadingPage = false;
+            btnFetch.setDisable(false);
+            updatePagination();
         });
-
-        new Thread(task).start();
+        new Thread(task, "waybill-page").start();
     }
+
+    private void finishPageLoad() {
+        loadingPage = false;
+        btnFetch.setDisable(false);
+        fetchStatusLabel.setText("共 " + totalItems + " 条，当前 " + waybillItems.size() + " 条");
+        updatePagination();
+        updateFetchActionState();
+    }
+
+    private void updatePagination() {
+        long pages = Math.max(1, (totalItems + Integer.parseInt(pageSizeBox.getValue()) - 1)
+                / Integer.parseInt(pageSizeBox.getValue()));
+        pageLabel.setText("第 " + (currentPage + 1) + " / " + pages + " 页");
+        previousPageButton.setDisable(loadingPage || currentPage == 0);
+        nextPageButton.setDisable(loadingPage || currentPage + 1 >= pages);
+    }
+
+    private void watchSelection(WaybillItem item) {
+        item.selectedProperty().addListener((obs, wasSelected, isSelected) -> {
+            Long id = item.getWaybillDataId();
+            if (id == null) return;
+            if (isSelected) {
+                selectedById.put(id, item);
+                if (!selectedItems.contains(item)) selectedItems.add(item);
+            } else {
+                selectedById.remove(id);
+                selectedItems.remove(item);
+            }
+            selectedCountLabel.setText("已选中 " + selectedItems.size() + " 条");
+            updateFetchActionState();
+        });
+    }
+
+    @FXML private void onPreviousPage() { loadPage(currentPage - 1, activeQuery.withPage(currentPage - 1)); }
+    @FXML private void onNextPage() { loadPage(currentPage + 1, activeQuery.withPage(currentPage + 1)); }
 
     @FXML
     private void onGenerate() {
-        List<WaybillItem> selected = waybillItems.stream()
-                .filter(WaybillItem::isSelected)
-                .toList();
-
-        if (selected.isEmpty()) {
-            fetchStatusLabel.setText("请至少勾选一条面单数据");
-            Logger.warn("用户未勾选任何面单");
-            return;
-        }
-
-        runGenerateTask(selected, false);
-    }
-
-    @FXML
-    private void onGenerateAndPrint() {
         List<WaybillItem> selected = getSelectedWaybills();
+
         if (selected.isEmpty()) {
             fetchStatusLabel.setText("请至少勾选一条面单数据");
             Logger.warn("用户未勾选任何面单");
             return;
         }
 
-        if (!hasSelectedPrinter()) {
-            showAlert("请先选择打印机");
-            return;
-        }
-
-        runGenerateTask(selected, true);
+        selectedTable.requestFocus();
+        runGenerateTask(selected);
     }
 
-    private void runGenerateTask(List<WaybillItem> selected, boolean printAfterGenerate) {
-        String printer = printerComboBox.getValue();
-
-        Logger.info("开始处理面单，共 " + selected.size() + " 条，生成后打印: " + printAfterGenerate);
+    private void runGenerateTask(List<WaybillItem> selected) {
+        Logger.info("开始生成面单 PDF，共 " + selected.size() + " 条");
         btnFetch.setDisable(true);
         btnGenerate.setDisable(true);
-        btnGenerateAndPrint.setDisable(true);
-        btnPreviewSelected.setDisable(true);
         btnPrintSelected.setDisable(true);
+        processing = true;
+        selectedTable.setDisable(true);
+        waybillTable.setDisable(true);
+        pageSizeBox.setDisable(true);
         progressBar.setVisible(true);
         progressBar.setProgress(0);
         logArea.clear();
@@ -265,7 +349,6 @@ public class MainController {
                 int total = selected.size();
                 PdfGenerator generator = new PdfGenerator();
                 YundaPdfGenerator yundaGenerator = new YundaPdfGenerator();
-                List<GeneratedPdf> generatedPdfs = new ArrayList<>();
 
                 for (int i = 0; i < total; i++) {
                     WaybillItem item = selected.get(i);
@@ -273,45 +356,20 @@ public class MainController {
                         Logger.info("开始处理面单 [" + (i+1) + "/" + total + "]: " + item.getWaybillId());
 
                         setItemStatus(item, "生成中");
+                        Platform.runLater(() -> item.setPdfStatus("生成中"));
                         File pdfFile = generatePdfForItem(item, outputDir, generator, yundaGenerator);
                         markGenerated(item, pdfFile);
                         appendLog("✓ " + pdfFile.getName() + "：PDF 生成成功\n");
-                        generatedPdfs.add(new GeneratedPdf(item, pdfFile));
-                        if (!printAfterGenerate) {
-                            success++;
-                        }
+                        success++;
                     } catch (Exception ex) {
                         Logger.error("处理面单失败: " + item.getWaybillId(), ex);
                         setItemStatus(item, "生成失败");
+                        Platform.runLater(() -> item.setPdfStatus("生成失败：" + safeMessage(ex)));
                         appendLog("✗ " + item.getWaybillId() + " - " + safeMessage(ex) + "\n");
                     }
 
                     final int idx = i;
-                    Platform.runLater(() -> progressBar.setProgress(printAfterGenerate
-                            ? (double) (idx + 1) / (total * 2)
-                            : (double) (idx + 1) / total));
-                }
-
-                if (printAfterGenerate) {
-                    for (int i = 0; i < generatedPdfs.size(); i++) {
-                        GeneratedPdf generatedPdf = generatedPdfs.get(i);
-                        WaybillItem item = generatedPdf.item();
-                        try {
-                            setItemStatus(item, "打印中");
-                            PdfPrinter.printPdf(generatedPdf.file(), printer);
-                            markPrinted(item);
-                            appendLog("✓ " + generatedPdf.file().getName() + "：打印成功\n");
-                            success++;
-                        } catch (Exception ex) {
-                            Logger.error("打印面单失败: " + item.getWaybillId(), ex);
-                            markPrintFailed(item);
-                            setItemStatus(item, "打印失败");
-                            appendLog("✗ " + item.getWaybillId() + " - " + safeMessage(ex) + "\n");
-                        }
-                        final int printIndex = i;
-                        Platform.runLater(() -> progressBar.setProgress(
-                                (double) (total + printIndex + 1) / (total * 2)));
-                    }
+                    Platform.runLater(() -> progressBar.setProgress((double) (idx + 1) / total));
                 }
                 Logger.info("PDF 生成任务完成，成功: " + success + "/" + total);
                 return success;
@@ -320,13 +378,14 @@ public class MainController {
 
         task.setOnSucceeded(ev -> {
             int ok = task.getValue();
-            fetchStatusLabel.setText(printAfterGenerate
-                    ? "完成！成功生成并打印 " + ok + " / " + selected.size() + " 个面单"
-                    : "完成！成功生成 " + ok + " / " + selected.size() + " 个 PDF");
+            fetchStatusLabel.setText("完成！成功生成 " + ok + " / " + selected.size() + " 个 PDF");
             logArea.appendText("\nPDF 保存位置：" + outputDir.getAbsolutePath() + "\n");
             progressBar.setProgress(1);
             progressBar.setVisible(false);
             waybillTable.setDisable(false);
+            selectedTable.setDisable(false);
+            pageSizeBox.setDisable(false);
+            processing = false;
             btnFetch.setDisable(false);
             updateFetchActionState();
         });
@@ -335,22 +394,14 @@ public class MainController {
             logArea.appendText("错误：" + task.getException().getMessage() + "\n");
             progressBar.setVisible(false);
             waybillTable.setDisable(false);
+            selectedTable.setDisable(false);
+            pageSizeBox.setDisable(false);
+            processing = false;
             btnFetch.setDisable(false);
             updateFetchActionState();
         });
 
         new Thread(task).start();
-    }
-
-    @FXML
-    private void onPreviewSelected() {
-        List<WaybillItem> selected = getSelectedWaybills();
-        if (selected.isEmpty()) {
-            showAlert("请至少勾选一条面单数据");
-            return;
-        }
-        // Previewing one PDF avoids opening a large number of external windows at once.
-        onPreviewItem(selected.get(0));
     }
 
     @FXML
@@ -360,42 +411,12 @@ public class MainController {
             showAlert("请至少勾选一条面单数据");
             return;
         }
+        selectedTable.requestFocus();
         onPrintItems(selected);
     }
 
     private List<WaybillItem> getSelectedWaybills() {
-        return waybillItems.stream().filter(WaybillItem::isSelected).toList();
-    }
-
-    private void onPreviewItem(WaybillItem item) {
-        File pdfFile = resolvePdfFile(item);
-        if (pdfFile.isFile()) {
-            openPdf(pdfFile);
-            return;
-        }
-
-        setWaybillActionsDisabled(true);
-        setItemStatus(item, "生成中");
-        Task<File> task = new Task<>() {
-            @Override
-            protected File call() throws Exception {
-                File generated = generatePdfForItem(item, getPdfOutputDir(), new PdfGenerator(), new YundaPdfGenerator());
-                markGenerated(item, generated);
-                return generated;
-            }
-        };
-        task.setOnSucceeded(event -> {
-            setWaybillActionsDisabled(false);
-            updateFetchActionState();
-            openPdf(task.getValue());
-        });
-        task.setOnFailed(event -> {
-            setWaybillActionsDisabled(false);
-            updateFetchActionState();
-            setItemStatus(item, "生成失败");
-            showAlert("预览失败：" + safeMessage(task.getException()));
-        });
-        new Thread(task).start();
+        return List.copyOf(selectedItems);
     }
 
     private void onPrintItems(List<WaybillItem> selected) {
@@ -407,6 +428,9 @@ public class MainController {
         String printer = printerComboBox.getValue();
         File outputDir = getPdfOutputDir();
         setWaybillActionsDisabled(true);
+        processing = true;
+        selectedTable.setDisable(true);
+        pageSizeBox.setDisable(true);
         progressBar.setVisible(true);
         progressBar.setProgress(0);
         logArea.clear();
@@ -422,14 +446,17 @@ public class MainController {
                         File pdfFile = resolvePdfFile(item);
                         if (!pdfFile.isFile()) {
                             setItemStatus(item, "生成中");
+                            Platform.runLater(() -> item.setPdfStatus("生成中"));
                             pdfFile = generatePdfForItem(item, outputDir, new PdfGenerator(), new YundaPdfGenerator());
                             markGenerated(item, pdfFile);
                             appendLog("✓ " + pdfFile.getName() + "：PDF 生成成功\n");
                         } else {
                             item.attachPdfFile(pdfFile);
+                            Platform.runLater(() -> item.setPdfStatus("PDF已存在"));
                         }
 
                         setItemStatus(item, "打印中");
+                        Platform.runLater(() -> item.setPrintResult("打印中"));
                         printStarted = true;
                         PdfPrinter.printPdf(pdfFile, printer);
                         markPrinted(item);
@@ -439,7 +466,9 @@ public class MainController {
                         if (printStarted) {
                             markPrintFailed(item);
                         }
-                        setItemStatus(item, "打印失败");
+                        setItemStatus(item, printStarted ? "打印失败" : "生成失败");
+                        if (!printStarted) Platform.runLater(() -> item.setPdfStatus("生成失败：" + safeMessage(ex)));
+                        else Platform.runLater(() -> item.setPrintResult("打印失败：" + safeMessage(ex)));
                         appendLog("✗ " + item.getWaybillId() + " - " + safeMessage(ex) + "\n");
                     }
                     final int index = i;
@@ -451,6 +480,9 @@ public class MainController {
         task.setOnSucceeded(event -> {
             progressBar.setVisible(false);
             waybillTable.setDisable(false);
+            selectedTable.setDisable(false);
+            pageSizeBox.setDisable(false);
+            processing = false;
             btnFetch.setDisable(false);
             updateFetchActionState();
             showAlert("打印完成！成功: " + task.getValue() + " / " + selected.size());
@@ -458,6 +490,9 @@ public class MainController {
         task.setOnFailed(event -> {
             progressBar.setVisible(false);
             waybillTable.setDisable(false);
+            selectedTable.setDisable(false);
+            pageSizeBox.setDisable(false);
+            processing = false;
             btnFetch.setDisable(false);
             updateFetchActionState();
             showAlert("打印错误：" + safeMessage(task.getException()));
@@ -467,26 +502,89 @@ public class MainController {
 
     @FXML
     private void onSelectAll() {
-        waybillItems.forEach(i -> i.setSelected(true));
+        if (processing || activeQuery == null || totalItems == 0) return;
+        ApiClient.WaybillQuery snapshot = activeQuery.withSize(200);
+        long selectionVersion = requestVersion;
+        processing = true;
+        btnFetch.setDisable(true);
+        btnGenerate.setDisable(true);
+        btnPrintSelected.setDisable(true);
+        selectedTable.setDisable(true);
+        pageSizeBox.setDisable(true);
+        fetchStatusLabel.setText("正在选中全部查询结果...");
+        Task<List<WaybillData>> task = new Task<>() {
+            @Override protected List<WaybillData> call() throws Exception {
+                List<WaybillData> result = new ArrayList<>();
+                long expected = totalItems;
+                for (int page = 0; page * 200L < expected; page++) {
+                    ApiClient.WaybillPage response = apiClient.fetchWaybillPage(snapshot.withPage(page));
+                    expected = response.total();
+                    if (response.items().isEmpty()) break;
+                    result.addAll(response.items());
+                }
+                return result;
+            }
+        };
+        task.setOnSucceeded(event -> {
+            if (selectionVersion != requestVersion) {
+                btnFetch.setDisable(false);
+                processing = false;
+                selectedTable.setDisable(false);
+                pageSizeBox.setDisable(false);
+                updateFetchActionState();
+                return;
+            }
+            for (WaybillData data : task.getValue()) {
+                WaybillItem item = selectedById.get(data.id);
+                if (item == null) {
+                    item = waybillItems.stream().filter(row -> data.id.equals(row.getWaybillDataId()))
+                            .findFirst().orElseGet(() -> new WaybillItem(data));
+                    if (!waybillItems.contains(item)) watchSelection(item);
+                }
+                item.setSelected(true);
+            }
+            btnFetch.setDisable(false);
+            processing = false;
+            selectedTable.setDisable(false);
+            pageSizeBox.setDisable(false);
+            updateFetchActionState();
+            fetchStatusLabel.setText("已选中全部查询结果，共 " + selectedItems.size() + " 条");
+        });
+        task.setOnFailed(event -> {
+            btnFetch.setDisable(false);
+            processing = false;
+            selectedTable.setDisable(false);
+            pageSizeBox.setDisable(false);
+            updateFetchActionState();
+            fetchStatusLabel.setText("全选失败：" + safeMessage(task.getException()));
+        });
+        new Thread(task, "waybill-select-all").start();
     }
 
     @FXML
     private void onDeselectAll() {
-        waybillItems.forEach(i -> i.setSelected(false));
+        if (processing) return;
+        List.copyOf(selectedItems).forEach(i -> i.setSelected(false));
     }
 
     @FXML
     private void onSelectUnprinted() {
+        if (processing) return;
         waybillItems.forEach(i -> i.setSelected(!"已打印".equals(i.getStatus())));
     }
 
     @FXML
     private void onFilter() {
-        applyFilter();
+        loadPage(0, buildQuery(0));
     }
 
     @FXML
     private void onClearFilter() {
+        if (processing) return;
+        keywordField.clear();
+        printFilterBox.setValue("全部");
+        orderQuickRange.setValue(null);
+        waybillQuickRange.setValue(null);
         waybillDateFrom.setValue(null);
         waybillHourFrom.setValue(null);
         waybillMinuteFrom.setValue(null);
@@ -499,22 +597,38 @@ public class MainController {
         orderDateTo.setValue(null);
         orderHourTo.setValue(null);
         orderMinuteTo.setValue(null);
-        applyFilter();
+        loadingPage = true;
+        waybillTable.getSortOrder().clear();
+        loadingPage = false;
+        loadPage(0, buildQuery(0));
     }
 
-    private void applyFilter() {
-        LocalDateTime wdFrom = combineDateTime(waybillDateFrom.getValue(), waybillHourFrom.getValue(), waybillMinuteFrom.getValue());
-        LocalDateTime wdTo = combineDateTime(waybillDateTo.getValue(), waybillHourTo.getValue(), waybillMinuteTo.getValue());
-        LocalDateTime odFrom = combineDateTime(orderDateFrom.getValue(), orderHourFrom.getValue(), orderMinuteFrom.getValue());
-        LocalDateTime odTo = combineDateTime(orderDateTo.getValue(), orderHourTo.getValue(), orderMinuteTo.getValue());
+    @FXML private void onWaybillQuickRange() {
+        applyQuickRange(waybillQuickRange.getValue(), waybillDateFrom, waybillHourFrom,
+                waybillMinuteFrom, waybillDateTo, waybillHourTo, waybillMinuteTo);
+    }
 
-        waybillItems.clear();
-        for (WaybillItem item : allItems) {
-            if (!matchDateTimeRange(item.getWaybillCreatedDateTime(), wdFrom, wdTo)) continue;
-            if (!matchDateTimeRange(item.getOrderCreatedDateTime(), odFrom, odTo)) continue;
-            waybillItems.add(item);
-        }
-        fetchStatusLabel.setText("显示 " + waybillItems.size() + " / " + allItems.size() + " 条");
+    @FXML private void onOrderQuickRange() {
+        applyQuickRange(orderQuickRange.getValue(), orderDateFrom, orderHourFrom,
+                orderMinuteFrom, orderDateTo, orderHourTo, orderMinuteTo);
+    }
+
+    private void applyQuickRange(String choice, DatePicker fromDate, ComboBox<String> fromHour,
+                                 ComboBox<String> fromMinute, DatePicker toDate,
+                                 ComboBox<String> toHour, ComboBox<String> toMinute) {
+        if (choice == null) return;
+        LocalDateTime end = LocalDateTime.now(ZoneId.of("Asia/Shanghai"));
+        LocalDateTime start = switch (choice) {
+            case "近3天" -> end.minusDays(3);
+            case "近7天" -> end.minusDays(7);
+            default -> end.minusMonths(1);
+        };
+        fromDate.setValue(start.toLocalDate());
+        fromHour.setValue(String.format("%02d", start.getHour()));
+        fromMinute.setValue(String.format("%02d", start.getMinute()));
+        toDate.setValue(end.toLocalDate());
+        toHour.setValue(String.format("%02d", end.getHour()));
+        toMinute.setValue(String.format("%02d", end.getMinute()));
     }
 
     /** 将 DatePicker + 时/分 ComboBox 合并为 LocalDateTime。未选日期返回 null。 */
@@ -523,14 +637,6 @@ public class MainController {
         int h = hour != null ? Integer.parseInt(hour) : 0;
         int m = minute != null ? Integer.parseInt(minute) : 0;
         return LocalDateTime.of(date, LocalTime.of(h, m, 0));
-    }
-
-    private static boolean matchDateTimeRange(LocalDateTime value, LocalDateTime from, LocalDateTime to) {
-        if (from == null && to == null) return true;
-        if (value == null) return false;
-        if (from != null && value.isBefore(from)) return false;
-        if (to != null && value.isAfter(to)) return false;
-        return true;
     }
 
     private static String buildPdfInfo(String apiInfo, String parsedInfo, boolean recipient) {
@@ -667,15 +773,6 @@ public class MainController {
         return file;
     }
 
-    private void openPdf(File pdfFile) {
-        try {
-            PdfPreviewer.open(pdfFile);
-            fetchStatusLabel.setText("已打开预览：" + pdfFile.getName());
-        } catch (Exception ex) {
-            showAlert("打开 PDF 失败：" + safeMessage(ex));
-        }
-    }
-
     private boolean hasSelectedPrinter() {
         return printerComboBox.getValue() != null && !printerComboBox.getValue().isBlank();
     }
@@ -730,16 +827,14 @@ public class MainController {
     private void updatePrinterLabels() {
         String printer = printerComboBox.getValue();
         printTabPrinterLabel.setText(printer == null || printer.isBlank()
-                ? "请在“拉取面单”页选择"
+                ? "请在“面单查询”页选择"
                 : "当前使用：" + printer);
     }
 
     private void updateFetchActionState() {
-        boolean hasItems = !waybillItems.isEmpty();
-        btnGenerate.setDisable(!hasItems);
-        btnGenerateAndPrint.setDisable(!hasItems);
-        btnPreviewSelected.setDisable(!hasItems);
-        btnPrintSelected.setDisable(!hasItems);
+        boolean hasItems = !selectedItems.isEmpty();
+        btnGenerate.setDisable(processing || !hasItems);
+        btnPrintSelected.setDisable(processing || !hasItems);
     }
 
     private void restoreFetchActions() {
@@ -751,8 +846,6 @@ public class MainController {
     private void setWaybillActionsDisabled(boolean disabled) {
         btnFetch.setDisable(disabled);
         btnGenerate.setDisable(disabled);
-        btnGenerateAndPrint.setDisable(disabled);
-        btnPreviewSelected.setDisable(disabled);
         btnPrintSelected.setDisable(disabled);
         waybillTable.setDisable(disabled);
     }
@@ -847,9 +940,6 @@ public class MainController {
         alert.setHeaderText(null);
         alert.setContentText(msg);
         alert.showAndWait();
-    }
-
-    private record GeneratedPdf(WaybillItem item, File file) {
     }
 
     // ==================== PdfFileItem ====================

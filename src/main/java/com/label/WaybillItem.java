@@ -23,7 +23,7 @@ public class WaybillItem {
             .optionalEnd()
             .toFormatter();
 
-    private final SimpleBooleanProperty selected = new SimpleBooleanProperty(true);
+    private final SimpleBooleanProperty selected = new SimpleBooleanProperty(false);
     private final SimpleStringProperty waybillId = new SimpleStringProperty();
     private final SimpleStringProperty recipientName = new SimpleStringProperty();
     private final SimpleStringProperty recipientAddress = new SimpleStringProperty();
@@ -33,6 +33,8 @@ public class WaybillItem {
     private final SimpleStringProperty orderCreatedTime = new SimpleStringProperty();     // 订单创建时间
     private final SimpleStringProperty lastGenTime = new SimpleStringProperty();          // 上次生成PDF
     private final SimpleStringProperty status = new SimpleStringProperty();
+    private final SimpleStringProperty pdfStatus = new SimpleStringProperty();
+    private final SimpleStringProperty printResult = new SimpleStringProperty();
 
     private WaybillData data;
     // Raw time strings for filtering (keep original ISO format for parsing)
@@ -57,6 +59,13 @@ public class WaybillItem {
         this.orderCreatedTime.set(formatTime(data.orderCreatedAt));
         this.lastGenTime.set(formatTime(data.lastGeneratedAt));
         this.status.set(initialStatus(data));
+        boolean generated = data.lastGeneratedAt != null && !data.lastGeneratedAt.isBlank()
+                || "GENERATED".equalsIgnoreCase(data.printStatus)
+                || "PRINTED".equalsIgnoreCase(data.printStatus)
+                || "FAILED".equalsIgnoreCase(data.printStatus);
+        this.pdfStatus.set(generated ? "已生成" : "未生成");
+        this.printResult.set("PRINTED".equalsIgnoreCase(data.printStatus) ? "已打印"
+                : "FAILED".equalsIgnoreCase(data.printStatus) ? "打印失败" : "未打印");
     }
 
     private static String initialStatus(WaybillData data) {
@@ -159,6 +168,10 @@ public class WaybillItem {
 
     public String getStatus() { return status.get(); }
     public SimpleStringProperty statusProperty() { return status; }
+    public SimpleStringProperty pdfStatusProperty() { return pdfStatus; }
+    public SimpleStringProperty printResultProperty() { return printResult; }
+    public void setPdfStatus(String value) { pdfStatus.set(value); }
+    public void setPrintResult(String value) { printResult.set(value); }
 
     public File getPdfFile() { return pdfFile; }
 
@@ -172,6 +185,7 @@ public class WaybillItem {
         this.rawLastGeneratedAt = now;
         this.lastGenTime.set(formatTime(now));
         this.status.set("已生成");
+        this.pdfStatus.set("生成成功");
     }
 
     public void setStatus(String value) {
@@ -182,10 +196,12 @@ public class WaybillItem {
         String now = java.time.LocalDateTime.now().toString();
         this.rawLastPrintedAt = now;
         this.status.set("已打印");
+        this.printResult.set("打印成功");
     }
 
     public void markPrintFailed() {
         this.status.set("打印失败");
+        this.printResult.set("打印失败");
     }
 
     public WaybillData getData() { return data; }

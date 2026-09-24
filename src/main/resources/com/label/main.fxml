@@ -11,22 +11,27 @@
 
     <TabPane fx:id="tabPane" tabClosingPolicy="UNAVAILABLE" VBox.vgrow="ALWAYS">
 
-        <!-- Tab 1: 拉取面单 -->
-        <Tab text="拉取面单">
+        <Tab text="面单查询">
             <VBox spacing="12" styleClass="tab-content">
                 <padding><Insets top="16" right="16" bottom="16" left="16"/></padding>
 
-                <Label text="拉取面单数据" styleClass="title"/>
+                <Label text="面单查询" styleClass="title"/>
 
                 <!-- Fetch + Generate buttons -->
                 <HBox spacing="10" alignment="CENTER_LEFT">
-                    <Button fx:id="btnFetch" text="拉取面单" onAction="#onFetch" styleClass="btn-primary"/>
                     <Button fx:id="btnGenerate" text="生成PDF" onAction="#onGenerate" disable="true" styleClass="btn-accent"/>
-                    <Button fx:id="btnGenerateAndPrint" text="生成并打印" onAction="#onGenerateAndPrint" disable="true" styleClass="btn-accent"/>
-                    <Button fx:id="btnPreviewSelected" text="预览首个选中" onAction="#onPreviewSelected" disable="true"/>
-                    <Button fx:id="btnPrintSelected" text="打印选中" onAction="#onPrintSelected" disable="true" styleClass="btn-accent"/>
+                    <Button fx:id="btnPrintSelected" text="打印" onAction="#onPrintSelected" disable="true" styleClass="btn-accent"/>
                     <Region HBox.hgrow="ALWAYS"/>
                     <Label fx:id="fetchStatusLabel" styleClass="status-label"/>
+                </HBox>
+
+                <HBox spacing="8" alignment="CENTER_LEFT">
+                    <Label text="关键词:"/>
+                    <TextField fx:id="keywordField" promptText="订单号、运单号、序号、收件人、手机、地址、商品" prefWidth="390" onAction="#onFilter"/>
+                    <Label text="打印状态:"/>
+                    <ComboBox fx:id="printFilterBox" prefWidth="125"/>
+                    <Button fx:id="btnFetch" text="搜索" onAction="#onFilter" styleClass="btn-primary"/>
+                    <Button text="重置" onAction="#onClearFilter"/>
                 </HBox>
 
                 <HBox spacing="8" alignment="CENTER_LEFT">
@@ -38,7 +43,7 @@
 
                 <!-- 时间筛选：第一行 — 面单创建时间 -->
                 <HBox spacing="8" alignment="CENTER_LEFT">
-                    <Label text="面单创建:"/>
+                    <Label text="生成面单:"/>
                     <DatePicker fx:id="waybillDateFrom" prefWidth="120"/>
                     <ComboBox fx:id="waybillHourFrom" prefWidth="80"/>
                     <ComboBox fx:id="waybillMinuteFrom" prefWidth="80"/>
@@ -46,6 +51,7 @@
                     <DatePicker fx:id="waybillDateTo" prefWidth="120"/>
                     <ComboBox fx:id="waybillHourTo" prefWidth="80"/>
                     <ComboBox fx:id="waybillMinuteTo" prefWidth="80"/>
+                    <ComboBox fx:id="waybillQuickRange" prefWidth="115" promptText="快捷时间" onAction="#onWaybillQuickRange"/>
                 </HBox>
                 <!-- 时间筛选：第二行 — 订单创建时间 -->
                 <HBox spacing="8" alignment="CENTER_LEFT">
@@ -57,8 +63,7 @@
                     <DatePicker fx:id="orderDateTo" prefWidth="120"/>
                     <ComboBox fx:id="orderHourTo" prefWidth="80"/>
                     <ComboBox fx:id="orderMinuteTo" prefWidth="80"/>
-                    <Button text="筛选" onAction="#onFilter" styleClass="btn-primary"/>
-                    <Button text="清除" onAction="#onClearFilter"/>
+                    <ComboBox fx:id="orderQuickRange" prefWidth="115" promptText="快捷时间" onAction="#onOrderQuickRange"/>
                 </HBox>
 
                 <ProgressBar fx:id="progressBar" visible="false" prefWidth="99999"/>
@@ -66,7 +71,7 @@
                 <!-- Waybill table -->
                 <TableView fx:id="waybillTable" editable="true" VBox.vgrow="ALWAYS">
                     <columns>
-                        <TableColumn fx:id="selectCol" text="选择" prefWidth="50" editable="true"/>
+                        <TableColumn fx:id="selectCol" text="选择" prefWidth="50" editable="true" sortable="false"/>
                         <TableColumn fx:id="sequenceCol" text="序号" prefWidth="55"/>
                         <TableColumn fx:id="orderNumberCol" text="订单编号" prefWidth="105"/>
                         <TableColumn fx:id="waybillCol" text="运单号" prefWidth="160"/>
@@ -77,15 +82,31 @@
                         <TableColumn fx:id="orderCreatedTimeCol" text="订单创建" prefWidth="110"/>
                         <TableColumn fx:id="lastGenTimeCol" text="上次生成PDF" prefWidth="110"/>
                         <TableColumn fx:id="statusCol" text="状态" prefWidth="85"/>
-                        <TableColumn fx:id="actionCol" text="操作" prefWidth="135"/>
                     </columns>
                 </TableView>
 
                 <HBox spacing="10" alignment="CENTER_LEFT">
-                    <Button text="全选" onAction="#onSelectAll"/>
+                    <Button text="全选全部结果" onAction="#onSelectAll"/>
                     <Button text="取消全选" onAction="#onDeselectAll"/>
                     <Button fx:id="btnSelectUnprinted" text="选中未打印" onAction="#onSelectUnprinted"/>
+                    <Region HBox.hgrow="ALWAYS"/>
+                    <Label text="每页:"/>
+                    <ComboBox fx:id="pageSizeBox" prefWidth="90"/>
+                    <Button fx:id="previousPageButton" text="上一页" onAction="#onPreviousPage"/>
+                    <Label fx:id="pageLabel" text="第 1 / 1 页"/>
+                    <Button fx:id="nextPageButton" text="下一页" onAction="#onNextPage"/>
                 </HBox>
+
+                <Label fx:id="selectedCountLabel" text="已选中 0 条" styleClass="title"/>
+                <TableView fx:id="selectedTable" prefHeight="150" minHeight="100">
+                    <columns>
+                        <TableColumn fx:id="selectedWaybillCol" text="运单号" prefWidth="170" sortable="false"/>
+                        <TableColumn fx:id="selectedOrderCol" text="订单序号" prefWidth="130" sortable="false"/>
+                        <TableColumn fx:id="selectedPdfCol" text="PDF生成" prefWidth="155" sortable="false"/>
+                        <TableColumn fx:id="selectedPrintCol" text="打印" prefWidth="155" sortable="false"/>
+                        <TableColumn fx:id="selectedRemoveCol" text="操作" prefWidth="80" sortable="false"/>
+                    </columns>
+                </TableView>
 
                 <!-- Log output -->
                 <TextArea fx:id="logArea" editable="false" prefHeight="120" styleClass="log-area"/>
@@ -101,7 +122,7 @@
 
                 <HBox spacing="10" alignment="CENTER_LEFT">
                     <Label text="打印机:"/>
-                    <Label fx:id="printTabPrinterLabel" text="请在“拉取面单”页选择" styleClass="sub-label"/>
+                    <Label fx:id="printTabPrinterLabel" text="请在“面单查询”页选择" styleClass="sub-label"/>
                 </HBox>
 
                 <HBox spacing="10" alignment="CENTER_LEFT">

@@ -1,13 +1,19 @@
 package com.label;
 
 import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+import com.google.gson.ToNumberPolicy;
 import com.google.gson.reflect.TypeToken;
 import java.io.IOException;
 import java.net.URI;
+import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -30,7 +36,9 @@ public class ApiClient {
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(10))
                 .build();
-        this.gson = new Gson();
+        this.gson = new GsonBuilder()
+                .setObjectToNumberStrategy(ToNumberPolicy.LONG_OR_DOUBLE)
+                .create();
     }
 
     public void setUserId(Long userId) {
@@ -76,15 +84,38 @@ public class ApiClient {
         return false;
     }
 
-    /**
-     * 拉取面单数据
-     */
-    public List<WaybillData> fetchWaybills() throws IOException, InterruptedException {
+    public record WaybillQuery(int page, int size, String keyword, String printFilter,
+                               String orderFrom, String orderTo, String waybillFrom, String waybillTo,
+                               String sortBy, String sortDirection) {
+        public WaybillQuery withPage(int newPage) {
+            return new WaybillQuery(newPage, size, keyword, printFilter, orderFrom, orderTo,
+                    waybillFrom, waybillTo, sortBy, sortDirection);
+        }
+        public WaybillQuery withSize(int newSize) {
+            return new WaybillQuery(page, newSize, keyword, printFilter, orderFrom, orderTo,
+                    waybillFrom, waybillTo, sortBy, sortDirection);
+        }
+    }
+
+    public record WaybillPage(List<WaybillData> items, long total, int page, int size) {}
+
+    public WaybillPage fetchWaybillPage(WaybillQuery query) throws IOException, InterruptedException {
         if (userId == null) {
             throw new IllegalStateException("未登录");
         }
 
-        String url = baseUrl + "/api/v1/waybills?userId=" + userId;
+        StringBuilder urlBuilder = new StringBuilder(baseUrl + "/api/v1/waybills?userId=" + userId);
+        addQuery(urlBuilder, "page", Integer.toString(query.page()));
+        addQuery(urlBuilder, "size", Integer.toString(query.size()));
+        addQuery(urlBuilder, "keyword", query.keyword());
+        addQuery(urlBuilder, "printFilter", query.printFilter());
+        addQuery(urlBuilder, "orderFrom", query.orderFrom());
+        addQuery(urlBuilder, "orderTo", query.orderTo());
+        addQuery(urlBuilder, "waybillFrom", query.waybillFrom());
+        addQuery(urlBuilder, "waybillTo", query.waybillTo());
+        addQuery(urlBuilder, "sortBy", query.sortBy());
+        addQuery(urlBuilder, "sortDirection", query.sortDirection());
+        String url = urlBuilder.toString();
         Logger.logHttpRequest("GET", url, null);
 
         HttpRequest request = HttpRequest.newBuilder()
@@ -97,13 +128,21 @@ public class ApiClient {
         Logger.logHttpResponse("GET", url, response.statusCode(), response.body());
 
         if (response.statusCode() == 200) {
-            List<Map<String, Object>> rawList = gson.fromJson(response.body(), new TypeToken<List<Map<String, Object>>>(){}.getType());
-            Logger.info("成功拉取 " + rawList.size() + " 条面单数据");
-            return rawList.stream().map(this::mapToWaybillData).toList();
+            JsonObject root = JsonParser.parseString(response.body()).getAsJsonObject();
+            List<Map<String, Object>> rawList = gson.fromJson(root.get("items"),
+                    new TypeToken<List<Map<String, Object>>>(){}.getType());
+            return new WaybillPage(rawList.stream().map(this::mapToWaybillData).toList(),
+                    root.get("total").getAsLong(), root.get("page").getAsInt(), root.get("size").getAsInt());
         }
 
         Logger.error("拉取面单失败：HTTP " + response.statusCode());
         throw new IOException("拉取面单失败：HTTP " + response.statusCode());
+    }
+
+    private static void addQuery(StringBuilder url, String name, String value) {
+        if (value != null && !value.isBlank()) {
+            url.append('&').append(name).append('=').append(URLEncoder.encode(value, StandardCharsets.UTF_8));
+        }
     }
 
     /**
@@ -112,7 +151,8 @@ public class ApiClient {
     private WaybillData mapToWaybillData(Map<String, Object> map) {
         WaybillData data = new WaybillData();
         Object idObj = map.get("id");
-        if (idObj != null) data.id = Long.parseLong(idObj.toString());
+        if (idObj instanceof Number number) data.id = number.longValue();
+        else if (idObj != null) data.id = Long.parseLong(idObj.toString());
         data.trackingNumber = (String) map.get("waybillId");
         data.printHtml = (String) map.get("printHtml");
         data.expressCode = getString(map, "expressCode");  // 添加快递公司编码
