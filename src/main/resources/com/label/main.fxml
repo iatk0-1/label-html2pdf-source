@@ -91,6 +91,7 @@
                     <Button text="取消全选" onAction="#onDeselectAll"/>
                     <Button fx:id="btnSelectUnprinted" text="选中未打印" onAction="#onSelectUnprinted"/>
                     <Region HBox.hgrow="ALWAYS"/>
+                    <Label fx:id="totalCountLabel" text="共 0 条"/>
                     <Label text="每页:"/>
                     <ComboBox fx:id="pageSizeBox" prefWidth="90"/>
                     <Button fx:id="previousPageButton" text="上一页" onAction="#onPreviousPage"/>

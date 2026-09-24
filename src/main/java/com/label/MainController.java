@@ -70,6 +70,7 @@ public class MainController {
     @FXML private Button previousPageButton;
     @FXML private Button nextPageButton;
     @FXML private Label pageLabel;
+    @FXML private Label totalCountLabel;
     @FXML private Label selectedCountLabel;
     @FXML private TableView<WaybillItem> selectedTable;
     @FXML private TableColumn<WaybillItem, String> selectedWaybillCol;
@@ -321,6 +322,7 @@ public class MainController {
     private void updatePagination() {
         long pages = Math.max(1, (totalItems + Integer.parseInt(pageSizeBox.getValue()) - 1)
                 / Integer.parseInt(pageSizeBox.getValue()));
+        totalCountLabel.setText("共 " + totalItems + " 条");
         pageLabel.setText("第 " + (currentPage + 1) + " / " + pages + " 页");
         previousPageButton.setDisable(loadingPage || currentPage == 0);
         nextPageButton.setDisable(loadingPage || currentPage + 1 >= pages);
