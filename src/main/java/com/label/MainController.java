@@ -30,7 +30,6 @@ public class MainController {
 
     // === Fetch tab ===
     @FXML private Button btnFetch;
-    @FXML private Button btnGenerate;
     @FXML private Button btnPrintSelected;
     @FXML private Label fetchStatusLabel;
     @FXML private Label printerStatusLabel;
@@ -50,6 +49,7 @@ public class MainController {
     @FXML private TableColumn<WaybillItem, Void> actionCol;
     @FXML private Button btnSelectUnprinted;
     @FXML private TextArea logArea;
+    @FXML private SplitPane waybillLogSplitPane;
     @FXML private DatePicker waybillDateFrom;
     @FXML private ComboBox<String> waybillHourFrom;
     @FXML private ComboBox<String> waybillMinuteFrom;
@@ -72,12 +72,6 @@ public class MainController {
     @FXML private Label pageLabel;
     @FXML private Label totalCountLabel;
     @FXML private Label selectedCountLabel;
-    @FXML private TableView<WaybillItem> selectedTable;
-    @FXML private TableColumn<WaybillItem, String> selectedWaybillCol;
-    @FXML private TableColumn<WaybillItem, String> selectedOrderCol;
-    @FXML private TableColumn<WaybillItem, String> selectedPdfCol;
-    @FXML private TableColumn<WaybillItem, String> selectedPrintCol;
-    @FXML private TableColumn<WaybillItem, Void> selectedRemoveCol;
 
     // === Print tab ===
     @FXML private ComboBox<String> printerComboBox;
@@ -111,6 +105,7 @@ public class MainController {
 
     @FXML
     public void initialize() {
+        waybillLogSplitPane.setDividerPositions(0.78);
         sequenceCol.setReorderable(false);
         sequenceCol.setCellFactory(column -> new TableCell<>() {
             @Override
@@ -165,20 +160,6 @@ public class MainController {
             return true;
         });
 
-        selectedWaybillCol.setCellValueFactory(c -> c.getValue().waybillIdProperty());
-        selectedOrderCol.setCellValueFactory(c -> c.getValue().orderNumbersProperty());
-        selectedPdfCol.setCellValueFactory(c -> c.getValue().pdfStatusProperty());
-        selectedPrintCol.setCellValueFactory(c -> c.getValue().printResultProperty());
-        selectedRemoveCol.setSortable(false);
-        selectedRemoveCol.setCellFactory(column -> new TableCell<>() {
-            private final Button remove = new Button("移除");
-            { remove.setOnAction(event -> getTableView().getItems().get(getIndex()).setSelected(false)); }
-            @Override protected void updateItem(Void item, boolean empty) {
-                super.updateItem(item, empty);
-                setGraphic(empty ? null : remove);
-            }
-        });
-        selectedTable.setItems(selectedItems);
         printFilterBox.getItems().addAll("全部", "未打印", "已打印", "未生成", "已生成");
         printFilterBox.setValue("全部");
         pageSizeBox.getItems().addAll("20", "50", "100", "200");
@@ -347,27 +328,11 @@ public class MainController {
     @FXML private void onPreviousPage() { loadPage(currentPage - 1, activeQuery.withPage(currentPage - 1)); }
     @FXML private void onNextPage() { loadPage(currentPage + 1, activeQuery.withPage(currentPage + 1)); }
 
-    @FXML
-    private void onGenerate() {
-        List<WaybillItem> selected = getSelectedWaybills();
-
-        if (selected.isEmpty()) {
-            fetchStatusLabel.setText("请至少勾选一条面单数据");
-            Logger.warn("用户未勾选任何面单");
-            return;
-        }
-
-        selectedTable.requestFocus();
-        runGenerateTask(selected);
-    }
-
     private void runGenerateTask(List<WaybillItem> selected) {
         Logger.info("开始生成面单 PDF，共 " + selected.size() + " 条");
         btnFetch.setDisable(true);
-        btnGenerate.setDisable(true);
         btnPrintSelected.setDisable(true);
         processing = true;
-        selectedTable.setDisable(true);
         waybillTable.setDisable(true);
         pageSizeBox.setDisable(true);
         progressBar.setVisible(true);
@@ -418,7 +383,6 @@ public class MainController {
             progressBar.setProgress(1);
             progressBar.setVisible(false);
             waybillTable.setDisable(false);
-            selectedTable.setDisable(false);
             pageSizeBox.setDisable(false);
             processing = false;
             btnFetch.setDisable(false);
@@ -429,7 +393,6 @@ public class MainController {
             logArea.appendText("错误：" + task.getException().getMessage() + "\n");
             progressBar.setVisible(false);
             waybillTable.setDisable(false);
-            selectedTable.setDisable(false);
             pageSizeBox.setDisable(false);
             processing = false;
             btnFetch.setDisable(false);
@@ -446,7 +409,6 @@ public class MainController {
             showAlert("请至少勾选一条面单数据");
             return;
         }
-        selectedTable.requestFocus();
         onPrintItems(selected);
     }
 
@@ -464,16 +426,15 @@ public class MainController {
         File outputDir = getPdfOutputDir();
         setWaybillActionsDisabled(true);
         processing = true;
-        selectedTable.setDisable(true);
         pageSizeBox.setDisable(true);
         progressBar.setVisible(true);
         progressBar.setProgress(0);
         logArea.clear();
 
-        Task<Integer> task = new Task<>() {
+        Task<List<WaybillItem>> task = new Task<>() {
             @Override
-            protected Integer call() {
-                int success = 0;
+            protected List<WaybillItem> call() {
+                List<WaybillItem> printedSuccessfully = new ArrayList<>();
                 for (int i = 0; i < selected.size(); i++) {
                     WaybillItem item = selected.get(i);
                     boolean printStarted = false;
@@ -496,7 +457,7 @@ public class MainController {
                         PdfPrinter.printPdf(pdfFile, printer);
                         markPrinted(item);
                         appendLog("✓ " + pdfFile.getName() + "：打印成功\n");
-                        success++;
+                        printedSuccessfully.add(item);
                     } catch (Exception ex) {
                         if (printStarted) {
                             markPrintFailed(item);
@@ -509,23 +470,22 @@ public class MainController {
                     final int index = i;
                     Platform.runLater(() -> progressBar.setProgress((double) (index + 1) / selected.size()));
                 }
-                return success;
+                return printedSuccessfully;
             }
         };
         task.setOnSucceeded(event -> {
             progressBar.setVisible(false);
             waybillTable.setDisable(false);
-            selectedTable.setDisable(false);
             pageSizeBox.setDisable(false);
             processing = false;
             btnFetch.setDisable(false);
+            task.getValue().forEach(item -> item.setSelected(false));
             updateFetchActionState();
-            showAlert("打印完成！成功: " + task.getValue() + " / " + selected.size());
+            showAlert("打印完成！成功: " + task.getValue().size() + " / " + selected.size());
         });
         task.setOnFailed(event -> {
             progressBar.setVisible(false);
             waybillTable.setDisable(false);
-            selectedTable.setDisable(false);
             pageSizeBox.setDisable(false);
             processing = false;
             btnFetch.setDisable(false);
@@ -542,9 +502,7 @@ public class MainController {
         long selectionVersion = requestVersion;
         processing = true;
         btnFetch.setDisable(true);
-        btnGenerate.setDisable(true);
         btnPrintSelected.setDisable(true);
-        selectedTable.setDisable(true);
         pageSizeBox.setDisable(true);
         fetchStatusLabel.setText("正在选中全部查询结果...");
         Task<List<WaybillData>> task = new Task<>() {
@@ -564,7 +522,6 @@ public class MainController {
             if (selectionVersion != requestVersion) {
                 btnFetch.setDisable(false);
                 processing = false;
-                selectedTable.setDisable(false);
                 pageSizeBox.setDisable(false);
                 updateFetchActionState();
                 return;
@@ -580,7 +537,6 @@ public class MainController {
             }
             btnFetch.setDisable(false);
             processing = false;
-            selectedTable.setDisable(false);
             pageSizeBox.setDisable(false);
             updateFetchActionState();
             fetchStatusLabel.setText("已选中全部查询结果，共 " + selectedItems.size() + " 条");
@@ -588,7 +544,6 @@ public class MainController {
         task.setOnFailed(event -> {
             btnFetch.setDisable(false);
             processing = false;
-            selectedTable.setDisable(false);
             pageSizeBox.setDisable(false);
             updateFetchActionState();
             fetchStatusLabel.setText("全选失败：" + safeMessage(task.getException()));
@@ -868,7 +823,6 @@ public class MainController {
 
     private void updateFetchActionState() {
         boolean hasItems = !selectedItems.isEmpty();
-        btnGenerate.setDisable(processing || !hasItems);
         btnPrintSelected.setDisable(processing || !hasItems);
     }
 
@@ -880,7 +834,6 @@ public class MainController {
 
     private void setWaybillActionsDisabled(boolean disabled) {
         btnFetch.setDisable(disabled);
-        btnGenerate.setDisable(disabled);
         btnPrintSelected.setDisable(disabled);
         waybillTable.setDisable(disabled);
     }
