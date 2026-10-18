@@ -64,6 +64,27 @@ public class WaybillData {
         return productInfo == null ? "" : productInfo.trim();
     }
 
+    public record PdfProductLine(String text, boolean bold) {}
+
+    /** 按商品明细携带字重，避免展平为字符串后丢失件数信息。 */
+    public List<PdfProductLine> getProductLinesForPdf() {
+        List<PdfProductLine> lines = new ArrayList<>();
+        if (orderItems != null) {
+            for (WaybillOrderItem item : orderItems) {
+                if (item == null) continue;
+                String text = item.toPdfLine();
+                if (!text.isEmpty()) {
+                    lines.add(new PdfProductLine(text, item.qty() != null && item.qty() > 1));
+                }
+            }
+        }
+        // 老接口只有商品文本，没有可信的件数字段，保持普通字重。
+        if (lines.isEmpty() && productInfo != null && !productInfo.isBlank()) {
+            lines.add(new PdfProductLine(productInfo.trim(), false));
+        }
+        return lines;
+    }
+
     public String getOrderNumbersForDisplay() {
         if (orderItems == null || orderItems.isEmpty()) return "";
         java.util.Set<String> seen = new java.util.LinkedHashSet<>();

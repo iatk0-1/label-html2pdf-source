@@ -151,7 +151,15 @@ public class PdfGenerator {
      * 直接用 HTML 渲染为 PDF（适用于微信 print_html 等无法被 HtmlParser 解析的 HTML）
      */
     public void generateFromHtml(File htmlFile, File outputFile, String productInfo) throws IOException, DocumentException {
-        layout = new LabelPdfLayout(null, ORIG_WIDTH, ORIG_HEIGHT);
+        generateFromHtml(htmlFile, outputFile, productInfo, java.util.List.of());
+    }
+
+    public void generateFromHtml(File htmlFile, File outputFile, String productInfo,
+                                 java.util.List<WaybillOrderItem> orderItems) throws IOException, DocumentException {
+        WaybillData productData = new WaybillData();
+        productData.productInfo = productInfo;
+        productData.orderItems = orderItems;
+        layout = new LabelPdfLayout(productData, ORIG_WIDTH, ORIG_HEIGHT);
         String html = new String(Files.readAllBytes(htmlFile.toPath()), StandardCharsets.UTF_8);
 
         Rectangle pageSize = new Rectangle(pageW, pageH);

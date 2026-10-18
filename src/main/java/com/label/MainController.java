@@ -673,6 +673,7 @@ public class MainController {
             parsedData.sourceFile = data.sourceFile;
             String pdfProductInfo = data.getProductInfoForPdf();
             parsedData.productInfo = pdfProductInfo;
+            parsedData.orderItems = data.orderItems;
             // PDF 中脱敏，表格显示不脱敏；接口信息缺电话时保留 HTML 解析出的面单信息。
             parsedData.recipientInfo = buildPdfInfo(data.recipientInfo, parsedData.recipientInfo, true);
             parsedData.senderInfo = buildPdfInfo(data.senderInfo, parsedData.senderInfo, false);
@@ -693,7 +694,7 @@ public class MainController {
                 }
             } else {
                 Logger.warn("面单内容为空，使用 HTML 直接生成");
-                generator.generateFromHtml(tmpFile.toFile(), pdfFile, pdfProductInfo);
+                generator.generateFromHtml(tmpFile.toFile(), pdfFile, pdfProductInfo, data.orderItems);
             }
             return pdfFile;
         } finally {

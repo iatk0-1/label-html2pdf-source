@@ -22,6 +22,59 @@ import static org.junit.jupiter.api.Assertions.*;
 class LabelLayoutTest {
     @TempDir Path directory;
 
+    @Test void multiQuantityProductAndWrappedRemarksAreBoldInBothTemplates() throws Exception {
+        for (int mode = 0; mode < 3; mode++) {
+            boolean yunda = mode == 1;
+            WaybillData data = new WaybillData();
+            data.orderItems = List.of(
+                    new WaybillOrderItem(1L, 1L, "A001", "多件商品 加厚保暖外套 / 黑色 / XL * 2", 2,
+                            "请检查拉链和包装，多件商品的这段长备注换行后也要加粗"),
+                    new WaybillOrderItem(2L, 2L, "A002", "单件商品 纯棉长袖 * 1", 1, "普通字重"),
+                    new WaybillOrderItem(3L, 3L, "A003", "缺少件数的商品 * 9", null, "不根据商品名称猜测数量"));
+            data.productInfo = data.getProductInfoForPdf();
+            Path output = directory.resolve(mode == 2 ? "bold-fallback.pdf" : yunda ? "bold-yunda.pdf" : "bold-zto.pdf");
+            if (mode == 2) {
+                Path html = directory.resolve("fallback.html");
+                Files.writeString(html, "<html><body></body></html>");
+                new PdfGenerator().generateFromHtml(html.toFile(), output.toFile(), data.productInfo, data.orderItems);
+            } else if (yunda) new YundaPdfGenerator().generate(data, output.toFile());
+            else new PdfGenerator().generate(data, output.toFile());
+            try (PDDocument pdf = PDDocument.load(output.toFile())) {
+                List<Boolean> strokes = new ArrayList<>();
+                List<Float> baseline = new ArrayList<>();
+                PDFTextStripper stripper = new PDFTextStripper() {
+                    @Override protected void processTextPosition(TextPosition text) {
+                        for (char c : text.getUnicode().toCharArray()) {
+                            if (!Character.isWhitespace(c)) {
+                                strokes.add(getGraphicsState().getTextState().getRenderingMode().isStroke());
+                                baseline.add(text.getYDirAdj());
+                            }
+                        }
+                        super.processTextPosition(text);
+                    }
+                };
+                String actual = stripper.getText(pdf).replaceAll("\\s+", "");
+                assertEquals(data.productInfo.replaceAll("\\s+", ""), actual);
+                int boldLength = data.orderItems.get(0).toPdfLine().replaceAll("\\s+", "").length();
+                assertTrue(strokes.subList(0, boldLength).stream().allMatch(Boolean::booleanValue),
+                        "多件商品及其换行备注均应加粗");
+                assertTrue(strokes.subList(boldLength, strokes.size()).stream().noneMatch(Boolean::booleanValue),
+                        "单件和件数为空的商品不能加粗");
+                assertTrue(baseline.subList(0, boldLength).stream().distinct().count() > 1,
+                        "必须覆盖多件商品实际换行的情况");
+            }
+            String previewDir = System.getProperty("label.previewDir");
+            if (previewDir != null) {
+                Path preview = Path.of(previewDir);
+                Files.createDirectories(preview);
+                Files.copy(output, preview.resolve(output.getFileName()), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            }
+        }
+        WaybillData legacy = new WaybillData();
+        legacy.productInfo = "旧数据商品 * 2";
+        assertFalse(legacy.getProductLinesForPdf().get(0).bold(), "无件数字段时保持原字重");
+    }
+
     @Test void yundaHeaderRemovesInteriorMarksAndKeepsOuterFrame() throws Exception {
         WaybillData data = fixture(607.65, 960, true);
         addLine(data, 2, 103, 607.65, 0);
@@ -62,6 +115,7 @@ class LabelLayoutTest {
         for (boolean yunda : new boolean[]{false, true}) {
             WaybillData data = fixture(yunda ? 607.65 : 606.04, yunda ? 960 : 1042.04, yunda);
             data.productInfo = "超长备注内容".repeat(500);
+            data.orderItems = List.of();
             Path output = directory.resolve(yunda ? "existing-yunda.pdf" : "existing-zto.pdf");
             Files.writeString(output, "保留原文件");
             assertThrows(com.itextpdf.text.DocumentException.class, () -> {
@@ -176,7 +230,13 @@ class LabelLayoutTest {
         data.recipientAddr = "浙江省杭州市西湖区三墩镇紫荆花北路新时代城市广场西区写字楼三号楼十八层一八零一室收发处";
         data.senderInfo = "李* 130****5216";
         data.senderAddr = "浙江省杭州市钱塘区义蓬街道测试小区8幢301室";
-        data.productInfo = "A012 加厚保暖外套 / 黑色 / XL * 2 备注：请检查拉链，分开包装\nA013 纯棉长袖 / 白色 / M * 1 备注：请不要折叠领口\n".repeat(3).trim();
+        for (int index = 0; index < 3; index++) {
+            data.orderItems.add(new WaybillOrderItem(1L, 1L, "A012", "加厚保暖外套 / 黑色 / XL * 2", 2,
+                    "请检查拉链，分开包装"));
+            data.orderItems.add(new WaybillOrderItem(2L, 2L, "A013", "纯棉长袖 / 白色 / M * 1", 1,
+                    "请不要折叠领口"));
+        }
+        data.productInfo = data.getProductInfoForPdf();
         BufferedImage qr = new BufferedImage(100, 100, BufferedImage.TYPE_BYTE_BINARY);
         ByteArrayOutputStream bytes = new ByteArrayOutputStream();
         ImageIO.write(qr, "png", bytes);

@@ -158,7 +158,8 @@ final class LabelPdfLayout {
             }
         }
         flow(cb, font, value, size -> productRows(x, startY, endY, exclusions, size),
-                9.5f, 6.5f, com.itextpdf.text.Element.ALIGN_LEFT, false);
+                9.5f, 6.5f, com.itextpdf.text.Element.ALIGN_LEFT, false,
+                data == null ? null : data.getProductLinesForPdf());
     }
 
     private List<Box> productRows(double x, double startY, double endY, List<Box> exclusions, double size) {
@@ -188,15 +189,22 @@ final class LabelPdfLayout {
                       java.util.function.DoubleFunction<List<Box>> boxesForSize,
                       float preferredSize, float minimumSize, int alignment, boolean bold)
             throws DocumentException {
+        flow(cb, baseFont, value, boxesForSize, preferredSize, minimumSize, alignment, bold, null);
+    }
+
+    private void flow(PdfContentByte cb, BaseFont baseFont, String value,
+                      java.util.function.DoubleFunction<List<Box>> boxesForSize,
+                      float preferredSize, float minimumSize, int alignment, boolean bold,
+                      List<WaybillData.PdfProductLine> productLines) throws DocumentException {
         // 先模拟排版，长地址和多条备注仅在确有必要时缩小，不截断或覆盖其他区域。
         float size = preferredSize;
-        while (!fits(cb, baseFont, value, boxesForSize.apply(size), size, alignment, bold)) {
+        while (!fits(cb, baseFont, value, boxesForSize.apply(size), size, alignment, bold, productLines)) {
             if (size <= minimumSize) {
                 throw new DocumentException("面单文字过长，当前区域无法完整容纳，请减少备注内容或检查地址格式");
             }
             size = Math.max(minimumSize, size - 0.25f);
         }
-        ColumnText column = column(cb, baseFont, value, size, bold);
+        ColumnText column = column(cb, baseFont, value, size, bold, productLines);
         for (Box box : boxesForSize.apply(size)) {
             if (box.width <= 0 || box.height <= 0) continue;
             position(column, box, size, alignment);
@@ -213,8 +221,9 @@ final class LabelPdfLayout {
     }
 
     private boolean fits(PdfContentByte cb, BaseFont baseFont, String value, List<Box> boxes,
-                         float size, int alignment, boolean bold) throws DocumentException {
-        ColumnText column = column(cb, baseFont, value, size, bold);
+                         float size, int alignment, boolean bold,
+                         List<WaybillData.PdfProductLine> productLines) throws DocumentException {
+        ColumnText column = column(cb, baseFont, value, size, bold, productLines);
         for (Box box : boxes) {
             if (box.width <= 0 || box.height <= 0) continue;
             position(column, box, size, alignment);
@@ -224,18 +233,31 @@ final class LabelPdfLayout {
     }
 
     private static ColumnText column(PdfContentByte cb, BaseFont baseFont, String text,
-                                     float size, boolean bold) {
+                                     float size, boolean bold, List<WaybillData.PdfProductLine> productLines) {
         ColumnText result = new ColumnText(cb);
-        Chunk chunk = new Chunk(text.trim(), new Font(baseFont, size, bold ? Font.BOLD : Font.NORMAL));
+        Phrase phrase = new Phrase();
+        if (productLines == null || productLines.isEmpty()) {
+            phrase.add(chunk(baseFont, text.trim(), size, bold));
+        } else {
+            for (int index = 0; index < productLines.size(); index++) {
+                WaybillData.PdfProductLine line = productLines.get(index);
+                phrase.add(chunk(baseFont, (index == 0 ? "" : "\n") + line.text(), size, line.bold()));
+            }
+        }
+        result.setText(phrase);
+        result.setUseAscender(true);
+        return result;
+    }
+
+    private static Chunk chunk(BaseFont baseFont, String text, float size, boolean bold) {
+        Chunk chunk = new Chunk(text, new Font(baseFont, size, bold ? Font.BOLD : Font.NORMAL));
         chunk.setSplitCharacter((start, current, end, characters, chunks) -> {
             if (current + 1 < end && "：:，,。；;！？!?）)】]》%％".indexOf(characters[current + 1]) >= 0) return false;
             if (current + 2 < end && characters[current] == '备' && characters[current + 1] == '注'
                     && "：:".indexOf(characters[current + 2]) >= 0) return false;
             return DefaultSplitCharacter.DEFAULT.isSplitCharacter(start, current, end, characters, chunks);
         });
-        result.setText(new Phrase(chunk));
-        result.setUseAscender(true);
-        return result;
+        return chunk;
     }
 
     private void position(ColumnText column, Box box, float size, int alignment) {
