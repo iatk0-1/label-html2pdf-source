@@ -1,7 +1,7 @@
 package com.label;
 
 /**
- * 商品明细及其下单备注，由面单接口的 orderItems 返回。
+ * 商品明细、用户备注及管理员备注，由面单接口的 orderItems 返回。
  */
 public record WaybillOrderItem(
         Long orderId,
@@ -9,11 +9,16 @@ public record WaybillOrderItem(
         String orderNumber,
         String productInfo,
         Integer qty,
-        String remark) {
+        String remark,
+        String adminRemark) {
+
+    public WaybillOrderItem(Long orderId, Long orderItemId, String orderNumber,
+                            String productInfo, Integer qty, String remark) {
+        this(orderId, orderItemId, orderNumber, productInfo, qty, remark, null);
+    }
 
     public String toPdfLine() {
         String product = normalize(productInfo);
-        String note = normalize(remark);
         if (product.isEmpty()) {
             product = "商品";
         }
@@ -21,10 +26,20 @@ public record WaybillOrderItem(
         if (!orderPrefix.isEmpty()) {
             product = orderPrefix + " " + product;
         }
-        if (note.isEmpty()) {
-            return product;
+        String notes = notesForDisplay();
+        return notes.isEmpty() ? product : product + " " + notes;
+    }
+
+    public String notesForDisplay() {
+        String userNote = normalize(remark);
+        String adminNote = normalize(adminRemark);
+        StringBuilder result = new StringBuilder();
+        if (!userNote.isEmpty()) result.append("备注：").append(userNote);
+        if (!adminNote.isEmpty()) {
+            if (!result.isEmpty()) result.append("  ");
+            result.append("商家备注：").append(adminNote);
         }
-        return product + " 备注：" + note;
+        return result.toString();
     }
 
     private static String normalize(String value) {

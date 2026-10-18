@@ -28,8 +28,8 @@ class LabelLayoutTest {
             WaybillData data = new WaybillData();
             data.orderItems = List.of(
                     new WaybillOrderItem(1L, 1L, "A001", "多件商品 加厚保暖外套 / 黑色 / XL * 2", 2,
-                            "请检查拉链和包装，多件商品的这段长备注换行后也要加粗"),
-                    new WaybillOrderItem(2L, 2L, "A002", "单件商品 纯棉长袖 * 1", 1, "普通字重"),
+                            "请检查拉链和包装，多件商品的这段长备注换行后也要加粗", "管理员要求检查配件并分开包装"),
+                    new WaybillOrderItem(2L, 2L, "A002", "单件商品 纯棉长袖 * 1", 1, "普通字重", "单件商家备注"),
                     new WaybillOrderItem(3L, 3L, "A003", "缺少件数的商品 * 9", null, "不根据商品名称猜测数量"));
             data.productInfo = data.getProductInfoForPdf();
             Path output = directory.resolve(mode == 2 ? "bold-fallback.pdf" : yunda ? "bold-yunda.pdf" : "bold-zto.pdf");

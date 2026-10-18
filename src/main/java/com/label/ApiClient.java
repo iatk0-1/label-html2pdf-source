@@ -232,7 +232,8 @@ public class ApiClient {
                     getString(item, "adminSeqNo"),
                     getString(item, "productInfo"),
                     getInteger(item, "qty"),
-                    getString(item, "remark")));
+                    getString(item, "remark"),
+                    getString(item, "adminRemark")));
         }
         return items;
     }

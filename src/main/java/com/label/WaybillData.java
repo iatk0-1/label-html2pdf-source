@@ -100,8 +100,8 @@ public class WaybillData {
         if (orderItems == null || orderItems.isEmpty()) return "";
         StringBuilder result = new StringBuilder();
         for (WaybillOrderItem item : orderItems) {
-            if (item == null || item.remark() == null) continue;
-            String value = item.remark().trim();
+            if (item == null) continue;
+            String value = item.notesForDisplay();
             if (value.isEmpty()) continue;
             if (result.length() > 0) result.append("；");
             result.append(value);
