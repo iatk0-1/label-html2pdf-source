@@ -10,7 +10,6 @@ import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.StringReader;
 import java.nio.charset.StandardCharsets;
@@ -18,58 +17,23 @@ import java.nio.file.Files;
 
 public class PdfGenerator {
 
-    // Paper: 76mm x 130mm (in points: 1mm = 2.83464567pt)
-    private static final float PAGE_WIDTH_MM = 76f;
-    private static final float PAGE_HEIGHT_MM = 130f;
-    private static final float PT_PER_MM = 2.83464567f;
+    private static final double ORIG_WIDTH = 606.04;
+    private static final double ORIG_HEIGHT = 1042.04;
+    private final float pageW = LabelPdfLayout.PAGE_WIDTH;
+    private final float pageH = LabelPdfLayout.PAGE_HEIGHT;
+    private final float margin = LabelPdfLayout.MARGIN;
+    private LabelPdfLayout layout = new LabelPdfLayout(null, ORIG_WIDTH, ORIG_HEIGHT);
 
-    // Margins: 3mm each side
-    private static final float MARGIN_MM = 3f;
-
-    // Original HTML content area
-    private static final double ORIG_WIDTH = 606.04;   // 608.22 - 2.18
-    private static final double ORIG_HEIGHT = 1042.04;  // 1044.22 - 2.18
-
-    private float pageW;
-    private float pageH;
-    private float margin;
-    private float contentW;
-    private float contentH;
-    private double scale;
-    private float offsetX;
-    private float offsetY;
-
-    public PdfGenerator() {
-        this.pageW = PAGE_WIDTH_MM * PT_PER_MM;
-        this.pageH = PAGE_HEIGHT_MM * PT_PER_MM;
-        this.margin = MARGIN_MM * PT_PER_MM;
-        this.contentW = pageW - 2 * margin;
-        this.contentH = pageH - 2 * margin;
-        this.scale = contentW / ORIG_WIDTH;
-        double scaledH = ORIG_HEIGHT * scale;
-        this.offsetX = margin;
-        this.offsetY = (float) ((contentH - scaledH) / 2) + margin;
-    }
-
-    private float tx(double x) {
-        return (float) (x * scale) + offsetX;
-    }
-
-    private float ty(double y) {
-        // PDF Y axis is bottom-up; original HTML Y is top-down
-        // contentH is the available content area height
-        // We position from the top of the content area
-        return (float) (pageH - offsetY - y * scale);
-    }
-
-    private float sw(double w) {
-        return (float) (w * scale);
-    }
+    private float tx(double x) { return layout.x(x); }
+    private float ty(double y) { return layout.y(y); }
+    private float sw(double width) { return layout.width(width); }
 
     public void generate(WaybillData data, File outputFile) throws IOException, DocumentException {
+        layout = new LabelPdfLayout(data, ORIG_WIDTH, ORIG_HEIGHT);
         Rectangle pageSize = new Rectangle(pageW, pageH);
         Document document = new Document(pageSize, 0, 0, 0, 0);
-        PdfWriter writer = PdfWriter.getInstance(document, new FileOutputStream(outputFile));
+        ByteArrayOutputStream pdfBuffer = new ByteArrayOutputStream();
+        PdfWriter writer = PdfWriter.getInstance(document, pdfBuffer);
         document.open();
 
         PdfContentByte cb = writer.getDirectContent();
@@ -97,12 +61,9 @@ public class PdfGenerator {
         for (WaybillData.ImageInfo img : data.images) {
             try {
                 com.itextpdf.text.Image pdfImg = com.itextpdf.text.Image.getInstance(toBlackAndWhiteImage(img.data));
-                float x = tx(img.left);
-                float y = ty(img.top + img.height); // bottom of image
-                float w = sw(img.width);
-                float h = sw(img.height);
-                pdfImg.scaleAbsolute(w, h);
-                pdfImg.setAbsolutePosition(x, y);
+                LabelPdfLayout.ImagePlacement image = layout.imagePlacement(img);
+                pdfImg.scaleAbsolute(image.width(), image.height());
+                pdfImg.setAbsolutePosition(image.x(), image.y());
                 cb.addImage(pdfImg);
             } catch (Exception e) {
                 System.err.println("Failed to embed image: " + e.getMessage());
@@ -114,25 +75,25 @@ public class PdfGenerator {
 
         // Date — top area
         if (data.date != null) {
-            addText(cb, data.date, bf, 10.90, 90.30, 322.66, 26.18, 21.80,
+            addText(cb, data.date, bf, 10.90, 80, 322.66, 26.18, 21.80,
                     Element.ALIGN_LEFT);
         }
 
         // Tracking number — barcode area
         if (data.trackingNumber != null) {
-            addText(cb, data.trackingNumber, bf, 0, 245.14, 584.26, 37.08, 26.16,
-                    Element.ALIGN_CENTER);
+            layout.text(cb, bf, data.trackingNumber, 0, 232, 584.26, 30,
+                    12f, 10f, Element.ALIGN_CENTER, false);
         }
 
         // Sorting code
         if (data.sortingCode != null) {
-            addText(cb, data.sortingCode, bf, 10.90, 310.96, 588.62, 0, 56.68,
+            addText(cb, data.sortingCode, bf, 10.90, 278, 588.62, 62, 56.68,
                     Element.ALIGN_CENTER);
         }
 
         // Transfer station
         if (data.transferStation != null) {
-            addText(cb, data.transferStation, bf, 97.00, 385, 501.42, 80.68, 39.24,
+            addText(cb, data.transferStation, bf, 97.00, 365, 501.42, 44, 39.24,
                     Element.ALIGN_LEFT);
         }
 
@@ -142,18 +103,21 @@ public class PdfGenerator {
             if (data.recipientAddr != null && !data.recipientAddr.isEmpty()) {
                 rText.append('\n').append(data.recipientAddr);
             }
-            addText(cb, rText.toString(), bf, 85.02, 440.56, 370.62, 150, 21,
-                    Element.ALIGN_LEFT);
+            layout.text(cb, bf, rText.toString(), 85.02, 430,
+                    layout.textRight(85.02, 430, 540) - 85.02, 110,
+                    (float) (21 * Math.min(layout.scaleX, layout.scaleY)), 5.5f,
+                    Element.ALIGN_LEFT, false);
         }
 
         // Sender
         if (data.senderInfo != null) {
             StringBuilder sText = new StringBuilder(data.senderInfo);
             if (data.senderAddr != null && !data.senderAddr.isEmpty()) {
-                sText.append('\n').append(data.senderAddr);
+                sText.append('\n').append(PrivacyMasker.maskSenderAddress(data.senderAddr));
             }
-            addText(cb, sText.toString(), bf, 82.5, 570.08, 371.82, 100, 21,
-                    Element.ALIGN_LEFT);
+            layout.text(cb, bf, sText.toString(), 82.5, 555,
+                    layout.textRight(82.5, 555, 665) - 82.5, 110,
+                    7.5f, 6.5f, Element.ALIGN_LEFT, false);
         }
 
         // Verified stamp
@@ -170,28 +134,30 @@ public class PdfGenerator {
 
         // Bottom tracking number repeat
         if (data.trackingNumber != null) {
-            addText(cb, data.trackingNumber, bf, 180.94, 750.30, 425.10, 0, 26.16,
-                    Element.ALIGN_CENTER);
+            layout.text(cb, bf, data.trackingNumber, 180.94, 731, 425.10, 30,
+                    10.5f, 10f, Element.ALIGN_CENTER, false);
         }
 
         // Product info at bottom (商品信息显示在面单最下方)
         if (data.productInfo != null && !data.productInfo.isEmpty()) {
-            addText(cb, data.productInfo, bf, 10.90, 820, 584.26, 0, 18,
-                    Element.ALIGN_LEFT);
+            layout.product(cb, bf, data.productInfo, 782, 495.92, 37.08);
         }
 
         document.close();
+        Files.write(outputFile.toPath(), pdfBuffer.toByteArray());
     }
 
     /**
      * 直接用 HTML 渲染为 PDF（适用于微信 print_html 等无法被 HtmlParser 解析的 HTML）
      */
     public void generateFromHtml(File htmlFile, File outputFile, String productInfo) throws IOException, DocumentException {
+        layout = new LabelPdfLayout(null, ORIG_WIDTH, ORIG_HEIGHT);
         String html = new String(Files.readAllBytes(htmlFile.toPath()), StandardCharsets.UTF_8);
 
         Rectangle pageSize = new Rectangle(pageW, pageH);
         Document document = new Document(pageSize, margin, margin, margin, margin);
-        PdfWriter writer = PdfWriter.getInstance(document, new FileOutputStream(outputFile));
+        ByteArrayOutputStream pdfBuffer = new ByteArrayOutputStream();
+        PdfWriter writer = PdfWriter.getInstance(document, pdfBuffer);
         document.open();
 
         // 注册中文字体
@@ -209,11 +175,11 @@ public class PdfGenerator {
         // 在面单最下方空白处渲染商品信息
         if (productInfo != null && !productInfo.isEmpty()) {
             PdfContentByte cb = writer.getDirectContent();
-            addText(cb, productInfo, bf, 10.90, 820, 584.26, 0, 18,
-                    Element.ALIGN_LEFT);
+            layout.product(cb, bf, productInfo, 820);
         }
 
         document.close();
+        Files.write(outputFile.toPath(), pdfBuffer.toByteArray());
     }
 
     private static BaseFont loadChineseFont() throws DocumentException, IOException {
@@ -300,54 +266,17 @@ public class PdfGenerator {
 
     private void addText(PdfContentByte cb, String text, BaseFont bf,
                          double origX, double origY, double origW, double origH,
-                         double origFontSize, int alignment) {
-
-        String[] inputLines = text.split("\\n");
-        float fontSize = (float) (origFontSize * scale);
-        float lineHeight = fontSize * 3f;
-        float maxW = origW > 0 ? sw(origW) : Float.MAX_VALUE;
-
-        // Flatten: wrap each input line, collect all output lines
-        java.util.List<String> outLines = new java.util.ArrayList<>();
-        for (String inputLine : inputLines) {
-            String trimmed = inputLine.trim();
-            if (trimmed.isEmpty()) continue;
-            if (bf.getWidthPoint(trimmed, fontSize) <= maxW) {
-                outLines.add(trimmed);
-            } else {
-                // Character-level wrap for CJK / long strings
-                StringBuilder buf = new StringBuilder();
-                for (int ci = 0; ci < trimmed.length(); ci++) {
-                    String ch = trimmed.substring(ci, ci + 1);
-                    if (bf.getWidthPoint(buf.toString() + ch, fontSize) > maxW && buf.length() > 0) {
-                        outLines.add(buf.toString());
-                        buf.setLength(0);
-                    }
-                    buf.append(ch);
-                }
-                if (buf.length() > 0) outLines.add(buf.toString());
-            }
-        }
-
-        for (int i = 0; i < outLines.size(); i++) {
-            String line = outLines.get(i);
-
-            cb.beginText();
-            cb.setFontAndSize(bf, fontSize);
-
-            float x = tx(origX);
-            // In HTML coords, later lines are further down → larger Y → lower on PDF page
-            float y = ty(origY + fontSize * 0.85f + i * lineHeight);
-
-            if (alignment == Element.ALIGN_CENTER && origW > 0) {
-                float textWidth = bf.getWidthPoint(line, fontSize);
-                x = tx(origX) + (maxW - textWidth) / 2;
-            }
-
-            cb.setTextMatrix(x, y);
-            cb.showText(line);
-            cb.endText();
-        }
+                         double origFontSize, int alignment) throws DocumentException {
+        addText(cb, text, bf, origX, origY, origW, origH, origFontSize, alignment, false);
     }
 
+    private void addText(PdfContentByte cb, String text, BaseFont bf,
+                         double origX, double origY, double origW, double origH,
+                         double origFontSize, int alignment, boolean bold) throws DocumentException {
+        float fontSize = (float) (origFontSize * Math.min(layout.scaleX, layout.scaleY));
+        double width = origW > 0 ? Math.min(origW, layout.right - origX - 4) : layout.right - origX - 4;
+        double height = origH > 0 ? origH : origFontSize * 1.5;
+        layout.text(cb, bf, text, origX, origY, width, height, fontSize,
+                Math.min(fontSize, 5f), alignment, bold);
+    }
 }

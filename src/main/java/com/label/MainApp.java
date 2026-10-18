@@ -4,20 +4,27 @@ import javafx.application.Application;
 import javafx.fxml.FXMLLoader;
 import javafx.scene.Parent;
 import javafx.scene.Scene;
+import javafx.scene.image.Image;
 import javafx.stage.Modality;
 import javafx.stage.Stage;
 
 public class MainApp extends Application {
 
     private static Stage primaryStage;
+    private static final String APP_NAME = "现在买打印软件";
+
+    private static void applyAppIcon(Stage stage) {
+        stage.getIcons().add(new Image(MainApp.class.getResource("images/app-icon.png").toExternalForm()));
+    }
 
     @Override
     public void start(Stage stage) {
         primaryStage = stage;
+        applyAppIcon(stage);
 
         // 记录应用启动
         Logger.info("========================================");
-        Logger.info("应用启动: Label Printer v1.0.0");
+        Logger.info("应用启动: " + APP_NAME + " v1.0.0");
         Logger.info("Java 版本: " + System.getProperty("java.version"));
         Logger.info("操作系统: " + System.getProperty("os.name") + " " + System.getProperty("os.version"));
         Logger.info("用户目录: " + System.getProperty("user.home"));
@@ -43,7 +50,8 @@ public class MainApp extends Application {
             Stage dialog = new Stage();
             dialog.initModality(Modality.APPLICATION_MODAL);
             dialog.initOwner(owner);
-            dialog.setTitle("登录打单系统");
+            dialog.setTitle(APP_NAME + " - 登录");
+            applyAppIcon(dialog);
 
             Scene scene = new Scene(root);
             scene.getStylesheets().add(getClass().getResource("style.css").toExternalForm());
@@ -76,7 +84,7 @@ public class MainApp extends Application {
             MainController controller = loader.getController();
             controller.setApiClient(loginCtrl.getApiClient());
 
-            stage.setTitle("快递面单打印系统");
+            stage.setTitle(APP_NAME);
             Scene scene = new Scene(root, 950, 700);
             scene.getStylesheets().add(getClass().getResource("style.css").toExternalForm());
             stage.setScene(scene);
@@ -98,6 +106,7 @@ public class MainApp extends Application {
             dialog.initModality(Modality.APPLICATION_MODAL);
             dialog.initOwner(primaryStage);
             dialog.setTitle("微信扫码登录");
+            applyAppIcon(dialog);
 
             Scene scene = new Scene(root, 400, 600);
             scene.getStylesheets().add(MainApp.class.getResource("style.css").toExternalForm());
@@ -127,7 +136,8 @@ public class MainApp extends Application {
             Stage dialog = new Stage();
             dialog.initModality(Modality.APPLICATION_MODAL);
             dialog.initOwner(primaryStage);
-            dialog.setTitle("登录打单系统");
+            dialog.setTitle(APP_NAME + " - 登录");
+            applyAppIcon(dialog);
 
             Scene scene = new Scene(root);
             scene.getStylesheets().add(MainApp.class.getResource("style.css").toExternalForm());
@@ -159,7 +169,7 @@ public class MainApp extends Application {
             MainController controller = loader.getController();
             controller.setApiClient(apiClient);
 
-            primaryStage.setTitle("快递面单打印系统");
+            primaryStage.setTitle(APP_NAME);
             Scene scene = new Scene(root, 950, 700);
             scene.getStylesheets().add(MainApp.class.getResource("style.css").toExternalForm());
             primaryStage.setScene(scene);

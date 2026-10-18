@@ -8,8 +8,8 @@ import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
-import java.io.FileOutputStream;
 import java.io.IOException;
+import java.nio.file.Files;
 
 /**
  * 韵达快递面单 PDF 生成器
@@ -18,63 +18,35 @@ import java.io.IOException;
  */
 public class YundaPdfGenerator {
 
-    // 纸张尺寸：76mm x 130mm
-    private static final float PAGE_WIDTH_MM = 76f;
-    private static final float PAGE_HEIGHT_MM = 130f;
-    private static final float PT_PER_MM = 2.83464567f;
-
-    // 边距：3mm
-    private static final float MARGIN_MM = 3f;
-
-    // 韵达面单原始尺寸（与 YundaHtmlParser 保持一致）
     private static final double ORIG_WIDTH = YundaHtmlParser.YUNDA_ORIG_WIDTH;
     private static final double ORIG_HEIGHT = YundaHtmlParser.YUNDA_ORIG_HEIGHT;
+    private final float pageW = LabelPdfLayout.PAGE_WIDTH;
+    private final float pageH = LabelPdfLayout.PAGE_HEIGHT;
+    private final float margin = LabelPdfLayout.MARGIN;
+    private LabelPdfLayout layout = new LabelPdfLayout(null, ORIG_WIDTH, ORIG_HEIGHT);
 
-    private float pageW;
-    private float pageH;
-    private float margin;
-    private float contentW;
-    private float contentH;
-    private double scale;
-    private float offsetX;
-    private float offsetY;
-
-    public YundaPdfGenerator() {
-        this.pageW = PAGE_WIDTH_MM * PT_PER_MM;
-        this.pageH = PAGE_HEIGHT_MM * PT_PER_MM;
-        this.margin = MARGIN_MM * PT_PER_MM;
-        this.contentW = pageW - 2 * margin;
-        this.contentH = pageH - 2 * margin;
-        this.scale = contentW / ORIG_WIDTH;
-        double scaledH = ORIG_HEIGHT * scale;
-        this.offsetX = margin;
-        this.offsetY = (float) ((contentH - scaledH) / 2) + margin;
-    }
-
-    private float tx(double x) {
-        return (float) (x * scale) + offsetX;
-    }
-
-    private float ty(double y) {
-        return (float) (pageH - offsetY - y * scale);
-    }
-
-    private float sw(double w) {
-        return (float) (w * scale);
-    }
+    private float tx(double x) { return layout.x(x); }
+    private float ty(double y) { return layout.y(y); }
+    private float sw(double width) { return layout.width(width); }
 
     public void generate(WaybillData data, File outputFile) throws IOException, DocumentException {
+        layout = new LabelPdfLayout(data, ORIG_WIDTH, ORIG_HEIGHT);
         Rectangle pageSize = new Rectangle(pageW, pageH);
         Document document = new Document(pageSize, 0, 0, 0, 0);
-        PdfWriter writer = PdfWriter.getInstance(document, new FileOutputStream(outputFile));
+        ByteArrayOutputStream pdfBuffer = new ByteArrayOutputStream();
+        PdfWriter writer = PdfWriter.getInstance(document, pdfBuffer);
         document.open();
 
         PdfContentByte cb = writer.getDirectContent();
 
         // 绘制横线
         cb.setLineWidth(0.5f);
+        double headerBottom = data.hlines.stream()
+                .filter(line -> line.width > (layout.right - layout.left) * 0.8
+                        && line.top > layout.top + 20)
+                .mapToDouble(line -> line.top).min().orElse(103);
         for (WaybillData.LineInfo l : data.hlines) {
-            if (l.width > 0) {
+            if (l.width > 0 && !isHeaderDecoration(l, headerBottom)) {
                 cb.moveTo(tx(l.left), ty(l.top));
                 cb.lineTo(tx(l.left + l.width), ty(l.top));
                 cb.stroke();
@@ -83,7 +55,7 @@ public class YundaPdfGenerator {
 
         // 绘制竖线
         for (WaybillData.LineInfo l : data.vlines) {
-            if (l.height > 0) {
+            if (l.height > 0 && !isHeaderDecoration(l, headerBottom)) {
                 cb.moveTo(tx(l.left), ty(l.top));
                 cb.lineTo(tx(l.left), ty(l.top + l.height));
                 cb.stroke();
@@ -94,12 +66,9 @@ public class YundaPdfGenerator {
         for (WaybillData.ImageInfo img : data.images) {
             try {
                 com.itextpdf.text.Image pdfImg = com.itextpdf.text.Image.getInstance(toBlackAndWhiteImage(img.data));
-                float x = tx(img.left);
-                float y = ty(img.top + img.height);
-                float w = sw(img.width);
-                float h = sw(img.height);
-                pdfImg.scaleAbsolute(w, h);
-                pdfImg.setAbsolutePosition(x, y);
+                LabelPdfLayout.ImagePlacement image = layout.imagePlacement(img);
+                pdfImg.scaleAbsolute(image.width(), image.height());
+                pdfImg.setAbsolutePosition(image.x(), image.y());
                 cb.addImage(pdfImg);
             } catch (Exception e) {
                 System.err.println("Failed to embed image: " + e.getMessage());
@@ -113,21 +82,21 @@ public class YundaPdfGenerator {
 
         // 日期和时间（top=70.7）
         if (data.date != null) {
-            addText(cb, data.date, bf, 4.18, 90, 200, 26.18, 18,
+            addText(cb, data.date, bf, 4.18, 78, 350, 26.18, 18,
                     Element.ALIGN_LEFT);
         }
 
         // 分拣码（如：602C N216-00 39）
         // 加粗、居中显示，字体大小 57（接近原始 56.57），宽度足够避免换行
         if (data.sortingCode != null) {
-            addText(cb, data.sortingCode, bf, 0, 145, 607.65, 60, 57,
+            addText(cb, data.sortingCode, bf, 0, 110, 607.65, 60, 57,
                     Element.ALIGN_CENTER, true);
         }
 
         // 运单号（top=290.9, 居中显示）
         if (data.trackingNumber != null) {
-            addText(cb, data.trackingNumber, bf, 0, 310, 607.65, 37.08, 24,
-                    Element.ALIGN_CENTER);
+            layout.text(cb, bf, data.trackingNumber, 0, 293, 607.65, 32,
+                    12f, 10f, Element.ALIGN_CENTER, false);
         }
 
         // 中转站/分拣信息（top=333.4）
@@ -143,18 +112,21 @@ public class YundaPdfGenerator {
             if (data.recipientAddr != null && !data.recipientAddr.isEmpty()) {
                 rText.append('\n').append(data.recipientAddr);
             }
-            addText(cb, rText.toString(), bf, 102.55, 420, 480, 120, 18,
-                    Element.ALIGN_LEFT);
+            layout.text(cb, bf, rText.toString(), 102.55, 410,
+                    layout.textRight(102.55, 410, 535) - 102.55, 125,
+                    (float) (18 * Math.min(layout.scaleX, layout.scaleY)), 5.5f,
+                    Element.ALIGN_LEFT, false);
         }
 
         // 寄件人信息（top=541.5）
         if (data.senderInfo != null) {
             StringBuilder sText = new StringBuilder(data.senderInfo);
             if (data.senderAddr != null && !data.senderAddr.isEmpty()) {
-                sText.append('\n').append(data.senderAddr);
+                sText.append('\n').append(PrivacyMasker.maskSenderAddress(data.senderAddr));
             }
-            addText(cb, sText.toString(), bf, 102.55, 555, 480, 100, 18,
-                    Element.ALIGN_LEFT);
+            layout.text(cb, bf, sText.toString(), 102.55, 550,
+                    layout.textRight(102.55, 550, 665) - 102.55, 115,
+                    7.5f, 6.5f, Element.ALIGN_LEFT, false);
         }
 
         // 验视章（top=666.7）
@@ -171,11 +143,20 @@ public class YundaPdfGenerator {
 
         // 商品信息（显示在面单最下方）
         if (data.productInfo != null && !data.productInfo.isEmpty()) {
-            addText(cb, data.productInfo, bf, 10.90, 720, 580, 0, 16,
-                    Element.ALIGN_LEFT);
+            layout.product(cb, bf, data.productInfo, 675, 502.57, 37.08);
         }
 
         document.close();
+        Files.write(outputFile.toPath(), pdfBuffer.toByteArray());
+    }
+
+    /** 忽略旧模板右上角内部横竖线，保留外框和整行分隔线。 */
+    private boolean isHeaderDecoration(WaybillData.LineInfo line, double headerBottom) {
+        double frameWidth = layout.right - layout.left;
+        return line.left > layout.left + frameWidth * 0.4
+                && line.left < layout.right - 10
+                && line.top < headerBottom - 3
+                && line.top + line.height <= headerBottom + 8;
     }
 
     private static BaseFont loadChineseFont() throws DocumentException, IOException {
@@ -260,69 +241,17 @@ public class YundaPdfGenerator {
 
     private void addText(PdfContentByte cb, String text, BaseFont bf,
                          double origX, double origY, double origW, double origH,
-                         double origFontSize, int alignment) {
+                         double origFontSize, int alignment) throws DocumentException {
         addText(cb, text, bf, origX, origY, origW, origH, origFontSize, alignment, false);
     }
 
     private void addText(PdfContentByte cb, String text, BaseFont bf,
                          double origX, double origY, double origW, double origH,
-                         double origFontSize, int alignment, boolean bold) {
-
-        String[] inputLines = text.split("\\n");
-        float fontSize = (float) (origFontSize * scale);
-        float lineHeight = fontSize * 3f;
-        float maxW = origW > 0 ? sw(origW) : Float.MAX_VALUE;
-
-        // 文本换行处理
-        java.util.List<String> outLines = new java.util.ArrayList<>();
-        for (String inputLine : inputLines) {
-            String trimmed = inputLine.trim();
-            if (trimmed.isEmpty()) continue;
-            if (bf.getWidthPoint(trimmed, fontSize) <= maxW) {
-                outLines.add(trimmed);
-            } else {
-                // 字符级换行
-                StringBuilder buf = new StringBuilder();
-                for (int ci = 0; ci < trimmed.length(); ci++) {
-                    String ch = trimmed.substring(ci, ci + 1);
-                    if (bf.getWidthPoint(buf.toString() + ch, fontSize) > maxW && buf.length() > 0) {
-                        outLines.add(buf.toString());
-                        buf.setLength(0);
-                    }
-                    buf.append(ch);
-                }
-                if (buf.length() > 0) outLines.add(buf.toString());
-            }
-        }
-
-        for (int i = 0; i < outLines.size(); i++) {
-            String line = outLines.get(i);
-
-            cb.beginText();
-            cb.setFontAndSize(bf, fontSize);
-
-            // 加粗效果：设置文本渲染模式为填充+描边
-            if (bold) {
-                cb.setTextRenderingMode(PdfContentByte.TEXT_RENDER_MODE_FILL_STROKE);
-                cb.setLineWidth(0.5f); // 描边宽度
-            }
-
-            float x = tx(origX);
-            float y = ty(origY + fontSize * 0.85f + i * lineHeight);
-
-            if (alignment == Element.ALIGN_CENTER && origW > 0) {
-                float textWidth = bf.getWidthPoint(line, fontSize);
-                x = tx(origX) + (maxW - textWidth) / 2;
-            }
-
-            cb.setTextMatrix(x, y);
-            cb.showText(line);
-            cb.endText();
-
-            // 重置渲染模式
-            if (bold) {
-                cb.setTextRenderingMode(PdfContentByte.TEXT_RENDER_MODE_FILL);
-            }
-        }
+                         double origFontSize, int alignment, boolean bold) throws DocumentException {
+        float fontSize = (float) (origFontSize * Math.min(layout.scaleX, layout.scaleY));
+        double width = origW > 0 ? Math.min(origW, layout.right - origX - 4) : layout.right - origX - 4;
+        double height = origH > 0 ? origH : origFontSize * 1.5;
+        layout.text(cb, bf, text, origX, origY, width, height, fontSize,
+                Math.min(fontSize, 5f), alignment, bold);
     }
 }

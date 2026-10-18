@@ -11,6 +11,34 @@ public class PrivacyMasker {
     private static final Pattern PHONE_IN_TEXT = Pattern.compile(
             "(?<!\\d)(?:1[3-9]\\d(?:[ -]?\\d){8}|0\\d{2,3}-?\\d{7,8})(?!\\d)");
 
+    private static final Pattern PROVINCE = Pattern.compile(
+            "^(?:北京市|天津市|上海市|重庆市|[\\p{IsHan}&&[^省市区县旗]]{2,8}?(?:省|自治区|特别行政区))");
+    private static final Pattern CITY = Pattern.compile("^[\\p{IsHan}&&[^省市区县旗]]{1,10}?(?:自治州|地区|市|盟)");
+    private static final Pattern DISTRICT = Pattern.compile("^[\\p{IsHan}]{1,8}?(?:自治县|自治旗|区|县|旗|市)");
+
+    /** 仅保留可识别的省市区，街道、小区及门牌统一隐藏；格式不明时保守隐藏。 */
+    public static String maskSenderAddress(String address) {
+        if (address == null || address.isBlank()) return address;
+        StringBuilder normalized = new StringBuilder();
+        for (String line : address.split("\\R")) {
+            // 部分韵达 HTML 将电话单独放在地址的第一行。
+            if (line.trim().matches("[\\d*+()（）\\-\\s]{6,}")) continue;
+            normalized.append(line.replaceAll("\\s+", ""));
+        }
+        String remaining = normalized.toString();
+        StringBuilder prefix = new StringBuilder();
+        for (Pattern level : new Pattern[]{PROVINCE, CITY, DISTRICT}) {
+            Matcher matcher = level.matcher(remaining);
+            if (!matcher.find()) continue;
+            String part = matcher.group();
+            // 不把缺失行政区的“幸福小区”等详细地址误识别为区县。
+            if (part.matches(".*(?:街道|街|路|大道|镇|乡|村|小区|社区|号|楼|室|巷|弄|超市|商场|公司).*")) break;
+            prefix.append(part);
+            remaining = remaining.substring(part.length());
+        }
+        return prefix + "******";
+    }
+
     /**
      * 姓名脱敏：只显示第一个字，后面显示*
      * 兼容中文名、英文名和其他特殊情况

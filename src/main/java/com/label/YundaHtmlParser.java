@@ -24,9 +24,8 @@ public class YundaHtmlParser {
     public static final double YUNDA_ORIG_WIDTH = 607.65;
     public static final double YUNDA_ORIG_HEIGHT = 960.00;
 
-    private static final Pattern TEXT_DIV = Pattern.compile(
-        "<div\\s+class=\"item text\"\\s+style=\"([^\"]+)\">\\s*(.*?)\\s*</div>",
-        Pattern.DOTALL);
+    private static final Pattern SORTING_CODE = Pattern.compile(
+            "[A-Z0-9]+\\s+[A-Z0-9-]+\\s+\\d+", Pattern.CASE_INSENSITIVE);
 
     public static WaybillData parse(File htmlFile) throws IOException {
         String rawHtml = new String(Files.readAllBytes(htmlFile.toPath()), StandardCharsets.UTF_8);
@@ -60,14 +59,12 @@ public class YundaHtmlParser {
             }
         }
 
-        // 解析文本内容
-        Matcher m = TEXT_DIV.matcher(rawHtml);
+        // 使用 DOM 读取文本，兼容属性顺序、嵌套 span 和 HTML 空格实体。
         java.util.List<TextEntry> textEntries = new java.util.ArrayList<>();
-        while (m.find()) {
-            String style = m.group(1);
-            String content = m.group(2).trim();
-            if (content.isEmpty()) continue;
-            if (style.matches(".*display\\s*:\\s*none.*")) continue;
+        for (Element el : doc.select("div.item.text")) {
+            String style = el.attr("style");
+            String content = el.html();
+            if (content.isBlank() || isHidden(el)) continue;
 
             TextEntry entry = new TextEntry();
             entry.style = style;
@@ -88,6 +85,13 @@ public class YundaHtmlParser {
             double top = entry.top;
             double left = entry.left;
 
+            // 分拣码位于日期和主条码之间，不能仅在 top < 100 的日期区域查找。
+            String normalized = text.replaceAll("\\s+", " ").trim();
+            if (top < 290 && SORTING_CODE.matcher(normalized).matches()) {
+                data.sortingCode = normalized;
+                continue;
+            }
+
             // 韵达面单的布局分析（基于实际数据）
             if (top < 100) {
                 // 顶部区域：日期、时间、分拣码等
@@ -98,10 +102,6 @@ public class YundaHtmlParser {
                     if (data.date != null) {
                         data.date = data.date + " " + text;
                     }
-                } else if (text.matches("[A-Z0-9]+\\s+[A-Z0-9-]+\\s+\\d+")) {
-                    // 分拣码（如：602C N216-00 39）
-                    // 移除换行符，替换为空格
-                    data.sortingCode = text.replaceAll("\\s+", " ").trim();
                 } else if (text.contains("货到付款") || text.contains("代收")) {
                     // 检查是否隐藏（display:none）
                     if (!entry.style.contains("display:none") && !entry.style.contains("display: none")) {
@@ -272,8 +272,8 @@ public class YundaHtmlParser {
     }
 
     private static String cleanText(String raw) {
-        raw = raw.replaceAll("<br\\s*/?>", "\n");
-        raw = raw.replaceAll("<[^>]+>", "");
+        raw = Jsoup.parseBodyFragment(raw).wholeText().replace('\u00a0', ' ')
+                .replace('\u3000', ' ');
         String[] lines = raw.split("\\n");
         StringBuilder sb = new StringBuilder();
         for (String line : lines) {
@@ -284,6 +284,16 @@ public class YundaHtmlParser {
             }
         }
         return sb.toString();
+    }
+
+    private static boolean isHidden(Element element) {
+        for (Element current = element; current != null; current = current.parent()) {
+            if (current.hasAttr("hidden")
+                    || current.attr("style").matches("(?is).*\\bdisplay\\s*:\\s*none\\b.*")) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static void parseRecipient(WaybillData data, String text) {
