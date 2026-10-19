@@ -677,8 +677,10 @@ public class MainController {
             // PDF 中脱敏，表格显示不脱敏；接口信息缺电话时保留 HTML 解析出的面单信息。
             parsedData.recipientInfo = buildPdfInfo(data.recipientInfo, parsedData.recipientInfo, true);
             parsedData.senderInfo = buildPdfInfo(data.senderInfo, parsedData.senderInfo, false);
+            parsedData.fillMissingAddressesFrom(data);
             parsedData.recipientAddr = PrivacyMasker.maskPhonesInText(parsedData.recipientAddr);
             parsedData.senderAddr = PrivacyMasker.maskPhonesInText(parsedData.senderAddr);
+            if (isYunda) parsedData.validateYundaRequiredFields();
 
             String filename = item.getWaybillId().replaceAll("[\\\\/:*?\"<>|]", "_") + ".pdf";
             File pdfFile = new File(outputDir, filename);

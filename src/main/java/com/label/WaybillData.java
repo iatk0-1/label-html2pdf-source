@@ -46,6 +46,23 @@ public class WaybillData {
     public List<LineInfo> hlines = new ArrayList<>();
     public List<LineInfo> vlines = new ArrayList<>();
 
+    /** HTML 地址识别为空时补用接口原始地址，避免只打印姓名电话。 */
+    public void fillMissingAddressesFrom(WaybillData apiData) {
+        if (apiData == null) return;
+        if (recipientAddr == null || recipientAddr.isBlank()) recipientAddr = apiData.recipientAddr;
+        if (senderAddr == null || senderAddr.isBlank()) senderAddr = apiData.senderAddr;
+    }
+
+    /** 关键字段缺失时停止生成，避免把不完整韵达面单提交打印。 */
+    public void validateYundaRequiredFields() {
+        if (sortingCode == null || sortingCode.isBlank()) {
+            throw new IllegalArgumentException("韵达面单分拣码未能识别，已停止生成，请检查原始面单模板");
+        }
+        if (recipientAddr == null || recipientAddr.isBlank()) {
+            throw new IllegalArgumentException("韵达面单收件地址为空，已停止生成，请检查接口地址或原始面单模板");
+        }
+    }
+
     /**
      * 生成 PDF 使用的商品信息。新接口优先使用带备注的商品明细，老数据回退到顶层商品信息。
      */

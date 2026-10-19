@@ -25,7 +25,7 @@ public class YundaHtmlParser {
     public static final double YUNDA_ORIG_HEIGHT = 960.00;
 
     private static final Pattern SORTING_CODE = Pattern.compile(
-            "[A-Z0-9]+\\s+[A-Z0-9-]+\\s+\\d+", Pattern.CASE_INSENSITIVE);
+            "[A-Z0-9]+\\s+[A-Z0-9-]+\\s+[A-Z0-9-]+", Pattern.CASE_INSENSITIVE);
 
     public static WaybillData parse(File htmlFile) throws IOException {
         String rawHtml = new String(Files.readAllBytes(htmlFile.toPath()), StandardCharsets.UTF_8);
@@ -63,7 +63,8 @@ public class YundaHtmlParser {
         java.util.List<TextEntry> textEntries = new java.util.ArrayList<>();
         for (Element el : doc.select("div.item.text")) {
             String style = el.attr("style");
-            String content = el.html();
+            // html() 会在序列化时折叠原始换行，导致地址被并进姓名电话那一行。
+            String content = el.wholeText();
             if (content.isBlank() || isHidden(el)) continue;
 
             TextEntry entry = new TextEntry();
@@ -75,7 +76,10 @@ public class YundaHtmlParser {
         }
 
         // 按位置排序
-        textEntries.sort((a, b) -> Double.compare(a.top, b.top));
+        textEntries.sort(java.util.Comparator.comparingDouble((TextEntry e) -> e.top)
+                .thenComparingDouble(e -> e.left));
+        java.util.List<String> recipientParts = new java.util.ArrayList<>();
+        java.util.List<String> senderParts = new java.util.ArrayList<>();
 
         // 根据位置分配字段（基于真实韵达面单数据）
         for (TextEntry entry : textEntries) {
@@ -118,10 +122,10 @@ public class YundaHtmlParser {
                 }
             } else if (top >= 350 && top < 500) {
                 // 收件人信息区域（top=398.0）
-                parseRecipient(data, text);
+                if (!text.equals("收") && !text.equals("收件")) recipientParts.add(text);
             } else if (top >= 500 && top < 650) {
                 // 寄件人信息区域（top=541.5）
-                parseSender(data, text);
+                if (!text.equals("寄") && !text.equals("寄件")) senderParts.add(text);
             } else if (top >= 650) {
                 // 底部区域：验视章等（top=666.7）
                 if (text.contains("验") || text.contains("已")) {
@@ -129,6 +133,10 @@ public class YundaHtmlParser {
                 }
             }
         }
+
+        // 收寄件信息可能分散在多个文本块，必须汇总后解析，不能被下一块覆盖。
+        if (!recipientParts.isEmpty()) parseRecipient(data, String.join("\n", recipientParts));
+        if (!senderParts.isEmpty()) parseSender(data, String.join("\n", senderParts));
 
         // 解析图片（条形码、二维码等）
         Elements imgs = doc.select("img.item.image");
@@ -272,8 +280,7 @@ public class YundaHtmlParser {
     }
 
     private static String cleanText(String raw) {
-        raw = Jsoup.parseBodyFragment(raw).wholeText().replace('\u00a0', ' ')
-                .replace('\u3000', ' ');
+        raw = raw.replace('\u00a0', ' ').replace('\u3000', ' ');
         String[] lines = raw.split("\\n");
         StringBuilder sb = new StringBuilder();
         for (String line : lines) {

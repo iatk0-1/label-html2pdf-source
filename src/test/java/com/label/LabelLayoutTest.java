@@ -55,6 +55,10 @@ class LabelLayoutTest {
                 };
                 String actual = stripper.getText(pdf).replaceAll("\\s+", "");
                 assertEquals(data.productInfo.replaceAll("\\s+", ""), actual);
+                int firstNoteIndex = data.orderItems.get(0).toPdfLine().split("\n", 2)[0]
+                        .replaceAll("\\s+", "").length();
+                assertTrue(baseline.get(firstNoteIndex) > baseline.get(firstNoteIndex - 1) + 1,
+                        "备注必须从商品信息下一行开始，不能接在商品后面");
                 int boldLength = data.orderItems.get(0).toPdfLine().replaceAll("\\s+", "").length();
                 assertTrue(strokes.subList(0, boldLength).stream().allMatch(Boolean::booleanValue),
                         "多件商品及其换行备注均应加粗");

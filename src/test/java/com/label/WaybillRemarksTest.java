@@ -9,10 +9,10 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class WaybillRemarksTest {
     @Test void printsUserNoteBeforeMerchantNoteAndOmitsEmptyLabels() {
-        assertEquals("A001 商品 * 2 备注：用户要求  商家备注：发货提醒",
+        assertEquals("A001 商品 * 2\n备注：用户要求  商家备注：发货提醒",
                 item(" 用户要求 ", " 发货提醒 ").toPdfLine());
-        assertEquals("A001 商品 * 2 商家备注：发货提醒", item(null, "发货提醒").toPdfLine());
-        assertEquals("A001 商品 * 2 备注：用户要求", item("用户要求", "  ").toPdfLine());
+        assertEquals("A001 商品 * 2\n商家备注：发货提醒", item(null, "发货提醒").toPdfLine());
+        assertEquals("A001 商品 * 2\n备注：用户要求", item("用户要求", "  ").toPdfLine());
         assertEquals("A001 商品 * 2", item(null, null).toPdfLine());
         WaybillData data = new WaybillData();
         data.orderItems = List.of(item("用户要求", "发货提醒"));
@@ -43,9 +43,9 @@ class WaybillRemarksTest {
                     "waybillCreatedAt","desc"));
             var items = page.items().get(0).orderItems;
             assertEquals("发货提醒", items.get(0).adminRemark());
-            assertEquals("A001 商品 * 2 备注：用户要求  商家备注：发货提醒", items.get(0).toPdfLine());
+            assertEquals("A001 商品 * 2\n备注：用户要求  商家备注：发货提醒", items.get(0).toPdfLine());
             assertNull(items.get(1).adminRemark());
-            assertEquals("旧商品 备注：旧备注", items.get(1).toPdfLine());
+            assertEquals("旧商品\n备注：旧备注", items.get(1).toPdfLine());
         } finally { server.stop(0); }
     }
 

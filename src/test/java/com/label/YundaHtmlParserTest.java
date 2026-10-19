@@ -13,6 +13,84 @@ import static org.junit.jupiter.api.Assertions.*;
 class YundaHtmlParserTest {
     @TempDir Path directory;
 
+    @Test void missingRequiredFieldsMustStopGeneration() {
+        WaybillData data = new WaybillData();
+        assertThrows(IllegalArgumentException.class, data::validateYundaRequiredFields);
+        data.sortingCode = "732A R182-47 S04";
+        assertThrows(IllegalArgumentException.class, data::validateYundaRequiredFields);
+        data.recipientAddr = "测试地址";
+        assertDoesNotThrow(data::validateYundaRequiredFields);
+    }
+
+    @Test void productionWaybillCodeAllowsLetterPrefixAndKeepsRawAddressLines() throws Exception {
+        WaybillData data = parse("""
+                <div class='item text' style='left:8.6px;top:99px;'>732A
+                    R182-47 S04</div>
+                <div class='item text' style='left:102.55px;top:398.02px;'>测试 13700000000
+                浙江省杭州市西湖区
+                示例路1号101室</div>
+                """);
+        assertEquals("732A R182-47 S04", data.sortingCode);
+        assertEquals("浙江省杭州市西湖区\n示例路1号101室", data.recipientAddr);
+        Path pdf = directory.resolve("production-structure.pdf");
+        new YundaPdfGenerator().generate(data, pdf.toFile());
+        try (PDDocument document = PDDocument.load(pdf.toFile())) {
+            String text = new PDFTextStripper().getText(document).replaceAll("\\s+", "");
+            assertTrue(text.contains("732AR182-47S04"));
+            assertTrue(text.contains("浙江省杭州市西湖区示例路1号101室"));
+        }
+    }
+
+    @Test void sortingCodeAllowsLetterSuffixFromRealYundaTemplate() throws Exception {
+        WaybillData data = parse("""
+                <div class='item text' style='left:8.6px;top:99px;'>332C
+                    E171-00 45B</div>
+                """);
+        assertEquals("332C E171-00 45B", data.sortingCode);
+        Path pdf = directory.resolve("letter-suffix.pdf");
+        new YundaPdfGenerator().generate(data, pdf.toFile());
+        try (PDDocument document = PDDocument.load(pdf.toFile())) {
+            assertTrue(new PDFTextStripper().getText(document).contains("332C E171-00 45B"));
+        }
+    }
+
+    @Test void rawLineBreaksInsideRecipientBlockMustBePreserved() throws Exception {
+        WaybillData data = parse("""
+                <div class='item text' style='left:100px;top:398px;'>测试 13800000000
+                浙江省杭州市西湖区
+                测试路1号101室</div>
+                """);
+        assertEquals("浙江省杭州市西湖区\n测试路1号101室", data.recipientAddr);
+    }
+
+    @Test void recipientAndSenderSplitAcrossBlocksMustNotOverwriteAddresses() throws Exception {
+        WaybillData data = parse("""
+                <div class='item text' style='left:100px;top:398px;'>测试 13800000000</div>
+                <div class='item text' style='left:100px;top:430px;'>浙江省杭州市西湖区</div>
+                <div class='item text' style='left:100px;top:460px;'>测试路1号101室</div>
+                <div class='item text' style='left:100px;top:541px;'>商家 13000000000</div>
+                <div class='item text' style='left:100px;top:580px;'>浙江省杭州市钱塘区</div>
+                <div class='item text' style='left:100px;top:610px;'>测试街道2号</div>
+                """);
+        assertTrue(data.recipientInfo.contains("138"));
+        assertEquals("浙江省杭州市西湖区\n测试路1号101室", data.recipientAddr);
+        assertEquals("浙江省杭州市钱塘区\n测试街道2号", data.senderAddr);
+    }
+
+    @Test void missingHtmlAddressUsesApiAddressButKeepsAnExistingHtmlAddress() {
+        WaybillData parsed = new WaybillData();
+        WaybillData api = new WaybillData();
+        api.recipientAddr = "浙江省杭州市西湖区测试路1号";
+        api.senderAddr = "浙江省杭州市钱塘区测试街道2号";
+        parsed.recipientAddr = "  ";
+        parsed.fillMissingAddressesFrom(api);
+        assertEquals(api.recipientAddr, parsed.recipientAddr);
+        assertEquals(api.senderAddr, parsed.senderAddr);
+        parsed.recipientAddr = "微信原始面单地址";
+        parsed.fillMissingAddressesFrom(api);
+        assertEquals("微信原始面单地址", parsed.recipientAddr);
+    }
+
     @Test void sortingCodeIsReadBelowDateAreaAndRenderedInPdf() throws Exception {
         for (int top : new int[]{70, 100, 114, 145, 180}) {
             WaybillData data = parse("""

@@ -27,7 +27,7 @@ public record WaybillOrderItem(
             product = orderPrefix + " " + product;
         }
         String notes = notesForDisplay();
-        return notes.isEmpty() ? product : product + " " + notes;
+        return notes.isEmpty() ? product : product + "\n" + notes;
     }
 
     public String notesForDisplay() {
