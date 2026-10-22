@@ -1,5 +1,7 @@
 package com.label;
 
+import javafx.beans.value.ChangeListener;
+import javafx.scene.Node;
 import javafx.scene.control.ContextMenu;
 import javafx.scene.control.MenuItem;
 import javafx.scene.control.SeparatorMenuItem;
@@ -25,6 +27,17 @@ class CopyableTableCell<S, T> extends TableCell<S, T> {
         field.setPrefRowCount(1);
         field.setMinWidth(0);
         field.prefWidthProperty().bind(widthProperty().subtract(8));
+        // 只跟随页面内的焦点切换，右键菜单弹出时仍保留待复制的选区。
+        ChangeListener<Node> focusOwnerListener = (observable, previous, current) -> {
+            if (previous == field && current != field) {
+                field.deselect();
+            }
+        };
+        field.sceneProperty().addListener((observable, previous, current) -> {
+            if (previous != null) previous.focusOwnerProperty().removeListener(focusOwnerListener);
+            field.deselect();
+            if (current != null) current.focusOwnerProperty().addListener(focusOwnerListener);
+        });
         field.skinProperty().addListener((observable, oldSkin, newSkin) -> {
             ScrollPane scrollPane = (ScrollPane) field.lookup(".scroll-pane");
             if (scrollPane != null) {
