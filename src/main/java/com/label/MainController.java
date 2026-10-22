@@ -107,11 +107,10 @@ public class MainController {
     public void initialize() {
         waybillLogSplitPane.setDividerPositions(0.78);
         sequenceCol.setReorderable(false);
-        sequenceCol.setCellFactory(column -> new TableCell<>() {
+        sequenceCol.setCellFactory(column -> new CopyableTableCell<>() {
             @Override
-            protected void updateItem(Void item, boolean empty) {
-                super.updateItem(item, empty);
-                setText(empty ? null : Integer.toString(currentPage * Integer.parseInt(pageSizeBox.getValue()) + getIndex() + 1));
+            protected String formatItem(Void item) {
+                return Integer.toString(currentPage * Integer.parseInt(pageSizeBox.getValue()) + getIndex() + 1);
             }
         });
 
@@ -126,6 +125,10 @@ public class MainController {
         orderCreatedTimeCol.setCellValueFactory(cellData -> cellData.getValue().orderCreatedTimeProperty());
         lastGenTimeCol.setCellValueFactory(cellData -> cellData.getValue().lastGenTimeProperty());
         statusCol.setCellValueFactory(cellData -> cellData.getValue().statusProperty());
+        for (TableColumn<WaybillItem, String> column : List.of(orderNumberCol, waybillCol, recipientCol,
+                addressCol, remarkCol, waybillCreatedTimeCol, orderCreatedTimeCol, lastGenTimeCol, statusCol)) {
+            column.setCellFactory(ignored -> new CopyableTableCell<>());
+        }
         actionCol.setSortable(false);
         actionCol.setReorderable(false);
         actionCol.setCellFactory(column -> new TableCell<>() {
@@ -173,6 +176,7 @@ public class MainController {
         pdfSelectCol.setCellValueFactory(cellData -> cellData.getValue().selectedProperty());
         pdfSelectCol.setCellFactory(CheckBoxTableCell.forTableColumn(pdfSelectCol));
         pdfNameCol.setCellValueFactory(cellData -> cellData.getValue().nameProperty());
+        pdfNameCol.setCellFactory(column -> new CopyableTableCell<>());
         pdfTable.setItems(pdfItems);
 
         printerComboBox.valueProperty().addListener((obs, oldValue, newValue) -> {

@@ -22,6 +22,43 @@ class YundaHtmlParserTest {
         assertDoesNotThrow(data::validateYundaRequiredFields);
     }
 
+    @Test void twoPartSortingCodeFromProductionHeaderMustValidateAndRenderInPdf() throws Exception {
+        String header;
+        try (var stream = getClass().getResourceAsStream("yunda-two-part-header.html")) {
+            assertNotNull(stream);
+            header = new String(stream.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+        }
+        WaybillData data = parse(header + """
+                <div class='item text' style='left:100px;top:398px;'>测试 13800000000
+                浙江省杭州市西湖区测试路1号</div>
+                """);
+        assertEquals("640A D020-00", data.sortingCode);
+        assertEquals("2026/10/22 23:11:32", data.date);
+        assertDoesNotThrow(data::validateYundaRequiredFields);
+        Path pdf = directory.resolve("two-part-sorting-code.pdf");
+        new YundaPdfGenerator().generate(data, pdf.toFile());
+        try (PDDocument document = PDDocument.load(pdf.toFile())) {
+            assertEquals(1, document.getNumberOfPages());
+            assertTrue(new PDFTextStripper().getText(document).contains("640A D020-00"));
+        }
+    }
+
+    @Test void twoPartSortingCodeMustStillRespectHeaderAndVisibility() throws Exception {
+        WaybillData data = parse("""
+                <div class='item text' style='top:99px;'>640A D020-00</div>
+                <div class='item text' style='top:120px;display:none;'>111A A001-00</div>
+                <div hidden><div class='item text' style='top:140px;'>222A A002-00</div></div>
+                <div class='item text' style='top:300px;'>333A A003-00</div>
+                """);
+        assertEquals("640A D020-00", data.sortingCode);
+        for (String text : new String[]{"2026/10/22", "23:11:32", "货到付款", "代收金额"}) {
+            WaybillData incomplete = parse("<div class='item text' style='top:99px;'>" + text + "</div>");
+            assertNull(incomplete.sortingCode);
+            incomplete.recipientAddr = "测试地址";
+            assertThrows(IllegalArgumentException.class, incomplete::validateYundaRequiredFields);
+        }
+    }
+
     @Test void productionWaybillCodeAllowsLetterPrefixAndKeepsRawAddressLines() throws Exception {
         WaybillData data = parse("""
                 <div class='item text' style='left:8.6px;top:99px;'>732A

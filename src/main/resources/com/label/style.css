@@ -129,6 +129,34 @@
     -fx-fill: #1a1a2e;
 }
 
+.copyable-table-cell {
+    -fx-padding: 0 4;
+    -fx-alignment: center-left;
+}
+
+.copyable-table-text {
+    -fx-background-color: transparent;
+    -fx-background-insets: 0;
+    -fx-padding: 0;
+    -fx-pref-height: 28px;
+    -fx-min-height: 28px;
+    -fx-max-height: 28px;
+    -fx-font-size: 12px;
+    -fx-text-fill: #1a1a2e;
+    -fx-highlight-fill: #4a6cf7;
+    -fx-highlight-text-fill: white;
+}
+
+.copyable-table-text .scroll-pane,
+.copyable-table-text .scroll-pane .viewport,
+.copyable-table-text .content {
+    -fx-background-color: transparent;
+}
+
+.copyable-table-text .content {
+    -fx-padding: 4 0;
+}
+
 /* === Progress bar === */
 .progress-bar {
     -fx-accent: #4a6cf7;

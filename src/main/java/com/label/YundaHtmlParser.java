@@ -24,15 +24,13 @@ public class YundaHtmlParser {
     public static final double YUNDA_ORIG_WIDTH = 607.65;
     public static final double YUNDA_ORIG_HEIGHT = 960.00;
 
-    private static final Pattern SORTING_CODE = Pattern.compile(
-            "[A-Z0-9]+\\s+[A-Z0-9-]+\\s+[A-Z0-9-]+", Pattern.CASE_INSENSITIVE);
-
     public static WaybillData parse(File htmlFile) throws IOException {
         String rawHtml = new String(Files.readAllBytes(htmlFile.toPath()), StandardCharsets.UTF_8);
         Document doc = Jsoup.parse(rawHtml);
 
         WaybillData data = new WaybillData();
         data.sourceFile = htmlFile.getName();
+        data.sortingCode = SortingCodeExtractor.read(doc, 0, 290, true);
 
         // 解析线条
         Elements items = doc.select("div.item");
@@ -88,13 +86,6 @@ public class YundaHtmlParser {
 
             double top = entry.top;
             double left = entry.left;
-
-            // 分拣码位于日期和主条码之间，不能仅在 top < 100 的日期区域查找。
-            String normalized = text.replaceAll("\\s+", " ").trim();
-            if (top < 290 && SORTING_CODE.matcher(normalized).matches()) {
-                data.sortingCode = normalized;
-                continue;
-            }
 
             // 韵达面单的布局分析（基于实际数据）
             if (top < 100) {
@@ -294,13 +285,7 @@ public class YundaHtmlParser {
     }
 
     private static boolean isHidden(Element element) {
-        for (Element current = element; current != null; current = current.parent()) {
-            if (current.hasAttr("hidden")
-                    || current.attr("style").matches("(?is).*\\bdisplay\\s*:\\s*none\\b.*")) {
-                return true;
-            }
-        }
-        return false;
+        return SortingCodeExtractor.isHidden(element);
     }
 
     private static void parseRecipient(WaybillData data, String text) {

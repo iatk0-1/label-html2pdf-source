@@ -17,17 +17,13 @@ import java.util.regex.Pattern;
 
 public class HtmlParser {
 
-    // Matches: <div class="item text" style="...">content</div>
-    private static final Pattern TEXT_DIV = Pattern.compile(
-        "<div\\s+class=\"item text\"\\s+style=\"([^\"]+)\">\\s*(.*?)\\s*</div>",
-        Pattern.DOTALL);
-
     public static WaybillData parse(File htmlFile) throws IOException {
         String rawHtml = new String(Files.readAllBytes(htmlFile.toPath()), StandardCharsets.UTF_8);
         Document doc = Jsoup.parse(rawHtml);
 
         WaybillData data = new WaybillData();
         data.sourceFile = htmlFile.getName();
+        data.sortingCode = SortingCodeExtractor.read(doc, 264, 346, false);
 
         // Parse lines from raw HTML
         Elements items = doc.select("div.item");
@@ -54,15 +50,12 @@ public class HtmlParser {
             }
         }
 
-        // Extract text divs directly from raw HTML (preserves newlines)
-        Matcher m = TEXT_DIV.matcher(rawHtml);
+        // DOM 兼容属性顺序、嵌套标签及空格实体，同时保留收寄件地址的原始换行。
         List<TextEntry> textEntries = new ArrayList<>();
-        while (m.find()) {
-            String style = m.group(1);
-            String content = m.group(2).trim();
-            if (content.isEmpty()) continue;
-            // Skip hidden elements — e.g. COD label with display:none
-            if (style.matches(".*display\\s*:\\s*none.*")) continue;
+        for (Element element : doc.select("div.item.text")) {
+            String style = element.attr("style");
+            String content = element.wholeText().trim();
+            if (content.isEmpty() || SortingCodeExtractor.isHidden(element)) continue;
 
             TextEntry entry = new TextEntry();
             entry.style = style;
@@ -95,10 +88,7 @@ public class HtmlParser {
                     data.trackingNumber = text;
                 }
             } else if (top < 346) {
-                // Sorting code
-                if (text.length() > 5) {
-                    data.sortingCode = text;
-                }
+                // 分拣区已按原模板汇总，短码和分散文本块也完整保留。
             } else if (top < 418) {
                 // Transfer station
                 if (text.length() < 15 && !text.matches("[\\d ]{10,}")) {
