@@ -102,6 +102,7 @@ public class Logger {
      * 记录 HTTP 请求
      */
     public static void logHttpRequest(String method, String url, String body) {
+        if (url.contains("/printer-accounts/login") || url.contains("/qrcode/check/")) body = "[登录凭证已隐藏]";
         StringBuilder sb = new StringBuilder();
         sb.append("HTTP 请求: ").append(method).append(" ").append(url);
         if (body != null && !body.isEmpty()) {
@@ -114,6 +115,7 @@ public class Logger {
      * 记录 HTTP 响应
      */
     public static void logHttpResponse(String method, String url, int statusCode, String body) {
+        if (url.contains("/printer-accounts/login") || url.contains("/qrcode/check/")) body = "[登录凭证已隐藏]";
         StringBuilder sb = new StringBuilder();
         sb.append("HTTP 响应: ").append(method).append(" ").append(url);
         sb.append("\n  状态码: ").append(statusCode);

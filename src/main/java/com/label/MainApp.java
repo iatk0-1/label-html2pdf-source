@@ -155,14 +155,8 @@ public class MainApp extends Application {
     /**
      * 显示主窗口（扫码登录成功后调用）
      */
-    public static void showMainWindow(Long userId) {
+    public static void showMainWindow(ApiClient apiClient) {
         try {
-            // 创建 ApiClient
-            String serverUrl = java.util.prefs.Preferences.userNodeForPackage(LoginController.class)
-                .get("server", "https://api.xianzaimai.com");
-            ApiClient apiClient = new ApiClient(serverUrl);
-            apiClient.setUserId(userId);
-
             FXMLLoader loader = new FXMLLoader(MainApp.class.getResource("main.fxml"));
             Parent root = loader.load();
 

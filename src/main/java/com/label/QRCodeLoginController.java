@@ -132,6 +132,7 @@ public class QRCodeLoginController {
 
             String status = jsonResponse.get("status").getAsString();
             String message = jsonResponse.get("message").getAsString();
+            if ("authorized".equals(status)) apiClient.acceptSession(jsonResponse);
 
             Platform.runLater(() -> {
                 switch (status) {
@@ -224,7 +225,7 @@ public class QRCodeLoginController {
             LoginController.saveLoginInfo(userId, username);
 
             // 跳转到主界面
-            MainApp.showMainWindow(userId);
+            MainApp.showMainWindow(apiClient);
 
         } catch (Exception e) {
             e.printStackTrace();

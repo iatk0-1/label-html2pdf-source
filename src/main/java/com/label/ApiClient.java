@@ -25,7 +25,8 @@ public class ApiClient {
     private final String baseUrl;
     private final HttpClient httpClient;
     private final Gson gson;
-    private Long userId;
+    private volatile Long userId;
+    private volatile String accessToken;
 
     public ApiClient() {
         this("http://192.168.10.217:8080");
@@ -45,10 +46,46 @@ public class ApiClient {
         this.userId = userId;
     }
 
+    public void acceptSession(JsonObject response) throws IOException {
+        if (!response.has("accessToken") || response.get("accessToken").isJsonNull()
+                || response.get("accessToken").getAsString().isBlank()) {
+            throw new IOException("服务未返回打印登录凭证，请确认后端和打印软件版本一致");
+        }
+        if (!response.has("userId") || response.get("userId").isJsonNull()) {
+            throw new IOException("打印登录响应缺少用户编号");
+        }
+        this.userId = response.get("userId").getAsLong();
+        this.accessToken = response.get("accessToken").getAsString();
+    }
+
+    private HttpRequest.Builder requestBuilder(String url) {
+        HttpRequest.Builder builder = HttpRequest.newBuilder().uri(URI.create(url));
+        String token = accessToken;
+        if (token != null && !token.isBlank()) builder.header("Authorization", "Bearer " + token);
+        return builder;
+    }
+
+    private IOException httpFailure(String action, HttpResponse<String> response) {
+        if (response.statusCode() == 401 || response.statusCode() == 403) {
+            accessToken = null;
+            userId = null;
+        }
+        String reason = "HTTP " + response.statusCode();
+        try {
+            JsonObject body = JsonParser.parseString(response.body()).getAsJsonObject();
+            if (body.has("message")) reason = body.get("message").getAsString();
+        } catch (RuntimeException ignored) {
+            // 非JSON错误使用状态码提示。
+        }
+        return new IOException(action + "：" + reason);
+    }
+
     /**
      * 登录
      */
     public boolean login(String username, String password) throws IOException, InterruptedException {
+        accessToken = null;
+        userId = null;
         String url = baseUrl + "/api/v1/printer-accounts/login";
 
         Map<String, String> requestBody = Map.of(
@@ -59,8 +96,7 @@ public class ApiClient {
         String requestJson = gson.toJson(requestBody);
         Logger.logHttpRequest("POST", url, requestJson);
 
-        HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(url))
+        HttpRequest request = requestBuilder(url)
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(requestJson))
                 .build();
@@ -69,19 +105,14 @@ public class ApiClient {
         Logger.logHttpResponse("POST", url, response.statusCode(), response.body());
 
         if (response.statusCode() == 200) {
-            Map<String, Object> result = gson.fromJson(response.body(), new TypeToken<Map<String, Object>>(){}.getType());
-            Object userIdObj = result.get("userId");
-            if (userIdObj instanceof Number) {
-                this.userId = ((Number) userIdObj).longValue();
-            } else {
-                this.userId = Long.parseLong(String.valueOf(userIdObj));
-            }
+            acceptSession(JsonParser.parseString(response.body()).getAsJsonObject());
             Logger.info("登录成功，用户ID: " + this.userId);
             return true;
         }
 
         Logger.error("登录失败: HTTP " + response.statusCode() + " body=" + response.body());
-        return false;
+        if (response.statusCode() == 401) return false;
+        throw httpFailure("打印登录失败", response);
     }
 
     public record WaybillQuery(int page, int size, String keyword, String printFilter,
@@ -100,8 +131,8 @@ public class ApiClient {
     public record WaybillPage(List<WaybillData> items, long total, int page, int size) {}
 
     public WaybillPage fetchWaybillPage(WaybillQuery query) throws IOException, InterruptedException {
-        if (userId == null) {
-            throw new IllegalStateException("未登录");
+        if (userId == null || accessToken == null) {
+            throw new IllegalStateException("打印登录已失效，请重新登录");
         }
 
         StringBuilder urlBuilder = new StringBuilder(baseUrl + "/api/v1/waybills?userId=" + userId);
@@ -118,8 +149,7 @@ public class ApiClient {
         String url = urlBuilder.toString();
         Logger.logHttpRequest("GET", url, null);
 
-        HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(url))
+        HttpRequest request = requestBuilder(url)
                 .header("Accept", "application/json")
                 .GET()
                 .build();
@@ -136,7 +166,7 @@ public class ApiClient {
         }
 
         Logger.error("拉取面单失败：HTTP " + response.statusCode());
-        throw new IOException("拉取面单失败：HTTP " + response.statusCode());
+        throw httpFailure("拉取面单失败", response);
     }
 
     private static void addQuery(StringBuilder url, String name, String value) {
@@ -280,8 +310,7 @@ public class ApiClient {
         String url = baseUrl + "/api/v1/waybills/" + waybillDataId + "/" + action;
         Logger.logHttpRequest("POST", url, null);
 
-        HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(url))
+        HttpRequest request = requestBuilder(url)
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.noBody())
                 .build();
@@ -291,7 +320,7 @@ public class ApiClient {
 
         if (response.statusCode() != 204) {
             Logger.error("更新面单打印状态失败：HTTP " + response.statusCode());
-            throw new IOException("更新面单打印状态失败：HTTP " + response.statusCode());
+            throw httpFailure("更新面单打印状态失败", response);
         }
 
         Logger.info("成功更新运单 " + waybillDataId + " 状态：" + action);
@@ -308,8 +337,7 @@ public class ApiClient {
         String url = baseUrl + path;
         Logger.logHttpRequest("GET", url, null);
 
-        HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(url))
+        HttpRequest request = requestBuilder(url)
                 .header("Accept", "application/json")
                 .GET()
                 .build();
@@ -322,7 +350,7 @@ public class ApiClient {
         }
 
         Logger.error("GET 请求失败：HTTP " + response.statusCode() + " " + response.body());
-        throw new IOException("GET 请求失败：HTTP " + response.statusCode() + " " + response.body());
+        throw httpFailure("请求失败", response);
     }
 
     /**
@@ -332,8 +360,7 @@ public class ApiClient {
         String url = baseUrl + path;
         Logger.logHttpRequest("POST", url, jsonBody);
 
-        HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(url))
+        HttpRequest request = requestBuilder(url)
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
                 .build();
@@ -346,6 +373,6 @@ public class ApiClient {
         }
 
         Logger.error("POST 请求失败：HTTP " + response.statusCode() + " " + response.body());
-        throw new IOException("POST 请求失败：HTTP " + response.statusCode() + " " + response.body());
+        throw httpFailure("请求失败", response);
     }
 }

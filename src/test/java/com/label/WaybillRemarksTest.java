@@ -38,7 +38,8 @@ class WaybillRemarksTest {
         server.start();
         try {
             ApiClient client = new ApiClient("http://127.0.0.1:" + server.getAddress().getPort());
-            client.setUserId(1L);
+            client.acceptSession(com.google.gson.JsonParser.parseString(
+                    "{\"userId\":1,\"accessToken\":\"fixture-printer-token\"}").getAsJsonObject());
             var page = client.fetchWaybillPage(new ApiClient.WaybillQuery(0,20,null,"ALL",null,null,null,null,
                     "waybillCreatedAt","desc"));
             var items = page.items().get(0).orderItems;
