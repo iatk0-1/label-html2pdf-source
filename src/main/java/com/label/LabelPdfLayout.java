@@ -178,7 +178,7 @@ final class LabelPdfLayout {
         }
     }
 
-    /** 每条商品及其换行备注作为一组，整组结束后只画一道分隔线。模拟与正式绘制共用排版。 */
+    /** 商品按组排版，保留组间距，不绘制商品分隔横线。 */
     private boolean productGroups(PdfContentByte cb, BaseFont font, List<WaybillData.PdfProductLine> products,
                                   double startX, double startY, double endY, List<Box> exclusions,
                                   float size, boolean simulate) throws DocumentException {
@@ -186,7 +186,6 @@ final class LabelPdfLayout {
         double rowHeight = size * 1.05 / scaleY;
         for (WaybillData.PdfProductLine product : products) {
             ColumnText column = column(cb, font, product.text(), size, product.bold(), List.of(product));
-            Box last = null;
             boolean more = true;
             while (more) {
                 if (cursor + rowHeight > endY + 0.001) return false;
@@ -207,20 +206,10 @@ final class LabelPdfLayout {
                         cb.restoreState();
                     }
                 }
-                last = box;
             }
-            // 线条位于本条商品最后一行下方，下一条另起一组。
+            // 保留商品组间的留白位置，不绘制分隔横线。
             double lineY = cursor + 0.6 / scaleY;
             if (lineY > endY) return false;
-            Box line = productRow(startX, lineY, lineY + 0.3 / scaleY, exclusions);
-            if (!simulate && last != null && line.width > 0) {
-                cb.saveState();
-                cb.setLineWidth(0.3f);
-                cb.moveTo(x(line.x), y(lineY));
-                cb.lineTo(x(line.x + line.width), y(lineY));
-                cb.stroke();
-                cb.restoreState();
-            }
             cursor += 1 / scaleY;
         }
         return true;
