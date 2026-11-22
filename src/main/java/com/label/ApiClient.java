@@ -47,6 +47,9 @@ public class ApiClient {
     }
 
     public void acceptSession(JsonObject response) throws IOException {
+        // 任何不完整的登录响应都不能继续沿用之前账号的凭证。
+        accessToken = null;
+        userId = null;
         if (!response.has("accessToken") || response.get("accessToken").isJsonNull()
                 || response.get("accessToken").getAsString().isBlank()) {
             throw new IOException("服务未返回打印登录凭证，请确认后端和打印软件版本一致");
@@ -76,6 +79,11 @@ public class ApiClient {
             if (body.has("message")) reason = body.get("message").getAsString();
         } catch (RuntimeException ignored) {
             // 非JSON错误使用状态码提示。
+        }
+        if (response.statusCode() == 401) {
+            reason = "登录状态已失效，请关闭软件后重新登录（" + reason + "）";
+        } else if (response.statusCode() == 403) {
+            reason = "打印权限校验失败，请联系管理员确认岗位权限后重新登录（" + reason + "）";
         }
         return new IOException(action + "：" + reason);
     }
@@ -132,7 +140,7 @@ public class ApiClient {
 
     public WaybillPage fetchWaybillPage(WaybillQuery query) throws IOException, InterruptedException {
         if (userId == null || accessToken == null) {
-            throw new IllegalStateException("打印登录已失效，请重新登录");
+            throw new IllegalStateException("打印登录已失效，请关闭软件后重新登录");
         }
 
         StringBuilder urlBuilder = new StringBuilder(baseUrl + "/api/v1/waybills?userId=" + userId);
@@ -307,6 +315,9 @@ public class ApiClient {
 
     private void postWaybillStatus(Long waybillDataId, String action)
             throws IOException, InterruptedException {
+        if (userId == null || accessToken == null) {
+            throw new IllegalStateException("打印登录已失效，请关闭软件后重新登录");
+        }
         String url = baseUrl + "/api/v1/waybills/" + waybillDataId + "/" + action;
         Logger.logHttpRequest("POST", url, null);
 

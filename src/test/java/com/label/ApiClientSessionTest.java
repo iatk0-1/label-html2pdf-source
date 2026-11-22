@@ -66,7 +66,10 @@ class ApiClientSessionTest {
     @Test void qrResponseCreatesTheSameAuthenticatedClientSession() throws Exception {
         client.acceptSession(JsonParser.parseString(client.get("/api/v1/printer-accounts/qrcode/check/ticket")).getAsJsonObject());
         client.fetchWaybillPage(query());
-        assertEquals(List.of("Bearer fixture-qr-token"), authorizations);
+        client.markGenerated(42L);
+        client.markPrinted(42L);
+        client.markPrintFailed(42L);
+        assertEquals(java.util.Collections.nCopies(4, "Bearer fixture-qr-token"), authorizations);
     }
 
     @Test void permissionRevocationClearsCredentialAndDoesNotRepeatTheWrite() throws Exception {
@@ -77,6 +80,10 @@ class ApiClientSessionTest {
         assertNull(client.getUserId());
         assertEquals(1, authorizations.size());
         assertThrows(IllegalStateException.class, () -> client.fetchWaybillPage(query()));
+        assertThrows(IllegalStateException.class, () -> client.markGenerated(42L));
+        assertThrows(IllegalStateException.class, () -> client.markPrinted(42L));
+        assertThrows(IllegalStateException.class, () -> client.markPrintFailed(42L));
+        assertEquals(1, authorizations.size());
     }
 
     @Test void userIdAloneDoesNotEstablishAPrinterSession() {
@@ -88,6 +95,38 @@ class ApiClientSessionTest {
     @Test void sessionWithoutCredentialIsRejected() {
         assertThrows(IOException.class, () -> client.acceptSession(JsonParser.parseString("{\"userId\":42}").getAsJsonObject()));
         assertNull(client.getUserId());
+    }
+
+    @Test void incompleteNewLoginCannotReuseThePreviousSession() throws Exception {
+        client.login("fixture", "fixture-password");
+        assertThrows(IOException.class, () -> client.acceptSession(
+                JsonParser.parseString("{\"userId\":43}").getAsJsonObject()));
+        assertNull(client.getUserId());
+        assertThrows(IllegalStateException.class, () -> client.fetchWaybillPage(query()));
+        assertTrue(authorizations.isEmpty());
+    }
+
+    @Test void expiredCredentialReportsReloginAndFreshLoginRestoresRequests() throws Exception {
+        client.login("fixture", "fixture-password");
+        server.removeContext("/api/v1/waybills");
+        server.createContext("/api/v1/waybills", exchange -> {
+            authorizations.add(exchange.getRequestHeaders().getFirst("Authorization"));
+            respond(exchange, 401, "{\"message\":\"打印凭证无效或已过期\"}");
+        });
+        IOException failure = assertThrows(IOException.class, () -> client.fetchWaybillPage(query()));
+        assertTrue(failure.getMessage().contains("关闭软件后重新登录"));
+        assertNull(client.getUserId());
+        assertThrows(IllegalStateException.class, () -> client.markPrinted(42L));
+        assertEquals(1, authorizations.size());
+
+        server.removeContext("/api/v1/waybills");
+        server.createContext("/api/v1/waybills", exchange -> {
+            authorizations.add(exchange.getRequestHeaders().getFirst("Authorization"));
+            respond(exchange, 200, "{\"items\":[],\"total\":0,\"page\":0,\"size\":20}");
+        });
+        assertTrue(client.login("fixture", "fixture-password"));
+        assertEquals(0, client.fetchWaybillPage(query()).total());
+        assertEquals(java.util.Collections.nCopies(2, "Bearer fixture-printer-token"), authorizations);
     }
 
     @Test void missingPrinterRoleReportsAuthorizationReasonInsteadOfPasswordFailure() throws Exception {

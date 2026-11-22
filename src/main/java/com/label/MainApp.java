@@ -24,7 +24,7 @@ public class MainApp extends Application {
 
         // 记录应用启动
         Logger.info("========================================");
-        Logger.info("应用启动: " + APP_NAME + " v1.0.0");
+        Logger.info("应用启动: " + APP_NAME + " v1.0.1");
         Logger.info("Java 版本: " + System.getProperty("java.version"));
         Logger.info("操作系统: " + System.getProperty("os.name") + " " + System.getProperty("os.version"));
         Logger.info("用户目录: " + System.getProperty("user.home"));
