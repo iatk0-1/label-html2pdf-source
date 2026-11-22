@@ -7,7 +7,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $projectRoot = $PSScriptRoot
 $appName = '现在买打印软件'
-$jarName = 'label-html2pdf-1.0.3.jar'
+$jarName = 'label-html2pdf-1.0.4.jar'
 if ($ReleaseId -notmatch '^[A-Za-z0-9-]+$') { throw '发布编号只能包含字母、数字和横线' }
 if (-not (Test-Path -LiteralPath "$JdkPath\bin\jpackage.exe")) { throw "找不到打包 JDK：$JdkPath" }
 
@@ -36,7 +36,7 @@ try {
     }
 
     Write-Host '正在生成带运行环境的 Windows 软件……'
-    & "$JdkPath\bin\jpackage.exe" --type app-image --name $appName --app-version 1.0.3 `
+    & "$JdkPath\bin\jpackage.exe" --type app-image --name $appName --app-version 1.0.4 `
         --vendor '现在买' --description '现在买快递面单打印软件' `
         --input $inputDir --dest $releaseRoot --main-jar $jarName --main-class com.label.MainApp `
         --icon (Join-Path $projectRoot 'packaging\app-icon.ico') --module-path $moduleDir `
@@ -55,7 +55,7 @@ try {
 
     $instructions = @"
 现在买打印软件
-版本：1.0.3
+版本：1.0.4
 
 解压整个文件夹后，双击“现在买打印软件.exe”启动，无需安装 Java。
 请保留 exe 同级的 app 和 runtime 文件夹，复制软件时请复制整个文件夹。
@@ -64,6 +64,7 @@ try {
 已有 PDF 请在面单查询页重新点击“生成”，才能应用本次面单排版。
 小程序二维码位于商品区域左下角，“共X件”紧邻二维码右侧，数量按本面单商品明细的实际件数加总。
 每条商品信息及其全部换行、备注结束后绘制一道横线，与下一条商品分隔。
+每条商品前的订单编号比商品名称小两号，并在同一行内靠上对齐；商品名称及备注继续使用原字号。
 PDF 纸张大小为 76×130 毫米，打印机驱动请按实际标签纸设置纸张大小。
 "@
     [IO.File]::WriteAllText((Join-Path $appDir '使用说明.txt'), $instructions, [Text.UTF8Encoding]::new($true))

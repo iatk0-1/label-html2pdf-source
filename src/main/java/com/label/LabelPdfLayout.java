@@ -185,7 +185,7 @@ final class LabelPdfLayout {
         double cursor = startY;
         double rowHeight = size * 1.05 / scaleY;
         for (WaybillData.PdfProductLine product : products) {
-            ColumnText column = column(cb, font, product.text(), size, product.bold(), null);
+            ColumnText column = column(cb, font, product.text(), size, product.bold(), List.of(product));
             Box last = null;
             boolean more = true;
             while (more) {
@@ -310,7 +310,21 @@ final class LabelPdfLayout {
         } else {
             for (int index = 0; index < productLines.size(); index++) {
                 WaybillData.PdfProductLine line = productLines.get(index);
-                phrase.add(chunk(baseFont, (index == 0 ? "" : "\n") + line.text(), size, line.bold()));
+                if (index > 0) phrase.add(chunk(baseFont, "\n", size, line.bold()));
+                String prefix = line.orderNumber() == null || line.orderNumber().isBlank()
+                        ? "" : line.orderNumber() + " ";
+                if (!prefix.isEmpty() && line.text().startsWith(prefix)) {
+                    // 只缩小结构化订单编号，商品名称、数量和备注继续使用原字号。
+                    float numberSize = size - 2f;
+                    Chunk orderNumber = chunk(baseFont, prefix, numberSize, line.bold());
+                    // 按字体上升高度补偿小字号，订单编号与本行商品文字顶部对齐。
+                    orderNumber.setTextRise(baseFont.getFontDescriptor(BaseFont.ASCENT, size)
+                            - baseFont.getFontDescriptor(BaseFont.ASCENT, numberSize));
+                    phrase.add(orderNumber);
+                    phrase.add(chunk(baseFont, line.text().substring(prefix.length()), size, line.bold()));
+                } else {
+                    phrase.add(chunk(baseFont, line.text(), size, line.bold()));
+                }
             }
         }
         result.setText(phrase);

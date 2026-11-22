@@ -117,12 +117,14 @@ class LabelLayoutTest {
             try (PDDocument pdf = PDDocument.load(output.toFile())) {
                 List<Boolean> strokes = new ArrayList<>();
                 List<Float> baseline = new ArrayList<>();
+                List<Float> fontSizes = new ArrayList<>();
                 PDFTextStripper stripper = new PDFTextStripper() {
                     @Override protected void processTextPosition(TextPosition text) {
                         for (char c : text.getUnicode().toCharArray()) {
                             if (!Character.isWhitespace(c)) {
                                 strokes.add(getGraphicsState().getTextState().getRenderingMode().isStroke());
                                 baseline.add(text.getYDirAdj());
+                                fontSizes.add(text.getFontSizeInPt());
                             }
                         }
                         super.processTextPosition(text);
@@ -130,6 +132,24 @@ class LabelLayoutTest {
                 };
                 String actual = stripper.getText(pdf).replaceAll("\\s+", "");
                 assertEquals(data.productInfo.replaceAll("\\s+", ""), actual);
+                int productOffset = 0;
+                for (WaybillOrderItem item : data.orderItems) {
+                    int numberLength = item.orderNumber().length();
+                    int productLength = item.toPdfLine().replaceAll("\\s+", "").length();
+                    float productSize = fontSizes.get(productOffset + numberLength);
+                    for (int numberIndex = 0; numberIndex < numberLength; numberIndex++) {
+                        assertEquals(productSize - 2f, fontSizes.get(productOffset + numberIndex), 0.01,
+                                "订单编号必须比商品名称和备注小两号");
+                        assertTrue(baseline.get(productOffset + numberIndex)
+                                        < baseline.get(productOffset + numberLength) - 0.5f,
+                                "订单编号必须在同一行里上移，靠上对齐");
+                    }
+                    for (int textIndex = numberLength; textIndex < productLength; textIndex++) {
+                        assertEquals(productSize, fontSizes.get(productOffset + textIndex), 0.01,
+                                "商品名称、数量及全部换行备注的字号保持一致");
+                    }
+                    productOffset += productLength;
+                }
                 int firstNoteIndex = data.orderItems.get(0).toPdfLine().split("\n", 2)[0]
                         .replaceAll("\\s+", "").length();
                 assertTrue(baseline.get(firstNoteIndex) > baseline.get(firstNoteIndex - 1) + 1,

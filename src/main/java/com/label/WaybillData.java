@@ -81,7 +81,11 @@ public class WaybillData {
         return productInfo == null ? "" : productInfo.trim();
     }
 
-    public record PdfProductLine(String text, boolean bold) {}
+    public record PdfProductLine(String text, boolean bold, String orderNumber) {
+        public PdfProductLine(String text, boolean bold) {
+            this(text, bold, null);
+        }
+    }
 
     /** 仅使用接口实际发货件数，明细不完整时不猜测总数。 */
     public Long getTotalQuantityForPdf() {
@@ -105,7 +109,8 @@ public class WaybillData {
                 if (item == null) continue;
                 String text = item.toPdfLine();
                 if (!text.isEmpty()) {
-                    lines.add(new PdfProductLine(text, item.qty() != null && item.qty() > 1));
+                    lines.add(new PdfProductLine(text, item.qty() != null && item.qty() > 1,
+                            item.orderNumber() == null ? null : item.orderNumber().trim()));
                 }
             }
         }
