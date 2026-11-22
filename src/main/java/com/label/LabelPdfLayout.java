@@ -87,7 +87,7 @@ final class LabelPdfLayout {
             h -= reduction;
         }
         if (isBottomQr(image)) {
-            x = PAGE_WIDTH - QR_EDGE_GAP - w;
+            x = QR_EDGE_GAP;
             y = QR_EDGE_GAP;
         }
         return new ImagePlacement(x, y, w, h);
@@ -129,7 +129,7 @@ final class LabelPdfLayout {
                 minimumFontSize, alignment, bold);
     }
 
-    /** 商品备注从验视章同一行开始，绕开验视章和右下角二维码。 */
+    /** 商品备注从验视章同一行开始，绕开验视章和左下角二维码。 */
     void product(PdfContentByte cb, BaseFont font, String value, double startY)
             throws DocumentException {
         product(cb, font, value, startY, Double.NaN, 0);
@@ -145,10 +145,12 @@ final class LabelPdfLayout {
                 && !data.verifiedStamp.isBlank()) {
             exclusions.add(new Box(stampLeft - 10, startY, right - stampLeft + 10, stampHeight + 10));
         }
+        ImagePlacement footerQr = null;
         if (data != null) {
             for (WaybillData.ImageInfo image : data.images) {
                 if (isBottomQr(image)) {
                     ImagePlacement qr = imagePlacement(image);
+                    footerQr = qr;
                     double qrLeft = left + (qr.x - MARGIN) / scaleX;
                     double qrBottom = top + (PAGE_HEIGHT - MARGIN - qr.y) / scaleY;
                     double qrTop = qrBottom - qr.height / scaleY;
@@ -161,13 +163,78 @@ final class LabelPdfLayout {
         // 商品区域最底下一行固定留给总件数，避免长备注把总数顶到页外。
         double footerTop = endY - 11 / scaleY;
         double contentEndY = quantity == null ? endY : footerTop - 1 / scaleY;
-        flow(cb, font, value, size -> productRows(x, startY, contentEndY, exclusions, size),
-                9.5f, quantity == null ? 6.5f : 6f, com.itextpdf.text.Element.ALIGN_LEFT, false,
-                data == null ? null : data.getProductLinesForPdf());
+        List<WaybillData.PdfProductLine> products = data == null ? List.of() : data.getProductLinesForPdf();
+        if (products.isEmpty()) products = List.of(new WaybillData.PdfProductLine(value, false));
+        float size = 9.5f;
+        while (!productGroups(cb, font, products, x, startY, contentEndY, exclusions, size, true)) {
+            if (size <= 5.5f) throw new DocumentException("面单商品文字过长，当前区域无法完整容纳，请减少备注内容");
+            size = Math.max(5.5f, size - 0.25f);
+        }
+        productGroups(cb, font, products, x, startY, contentEndY, exclusions, size, false);
         if (quantity != null) {
-            flow(cb, font, "共" + quantity + "件", productRows(x, footerTop, endY, exclusions, 9.5),
+            double countX = footerQr == null ? x : left + (footerQr.x + footerQr.width + 4 - MARGIN) / scaleX;
+            flow(cb, font, "共" + quantity + "件", productRows(countX, footerTop, endY, List.of(), 9.5),
                     9.5f, 9.5f, com.itextpdf.text.Element.ALIGN_LEFT, false);
         }
+    }
+
+    /** 每条商品及其换行备注作为一组，整组结束后只画一道分隔线。模拟与正式绘制共用排版。 */
+    private boolean productGroups(PdfContentByte cb, BaseFont font, List<WaybillData.PdfProductLine> products,
+                                  double startX, double startY, double endY, List<Box> exclusions,
+                                  float size, boolean simulate) throws DocumentException {
+        double cursor = startY;
+        double rowHeight = size * 1.05 / scaleY;
+        for (WaybillData.PdfProductLine product : products) {
+            ColumnText column = column(cb, font, product.text(), size, product.bold(), null);
+            Box last = null;
+            boolean more = true;
+            while (more) {
+                if (cursor + rowHeight > endY + 0.001) return false;
+                Box box = productRow(startX, cursor, cursor + rowHeight, exclusions);
+                cursor += rowHeight;
+                if (box.width <= 0) continue;
+                position(column, box, size, com.itextpdf.text.Element.ALIGN_LEFT);
+                if (simulate) {
+                    more = ColumnText.hasMoreText(column.go(true));
+                } else {
+                    cb.saveState();
+                    try {
+                        cb.rectangle(x(box.x), y(box.y + box.height), width(box.width), height(box.height));
+                        cb.clip();
+                        cb.newPath();
+                        more = ColumnText.hasMoreText(column.go());
+                    } finally {
+                        cb.restoreState();
+                    }
+                }
+                last = box;
+            }
+            // 线条位于本条商品最后一行下方，下一条另起一组。
+            double lineY = cursor + 0.6 / scaleY;
+            if (lineY > endY) return false;
+            Box line = productRow(startX, lineY, lineY + 0.3 / scaleY, exclusions);
+            if (!simulate && last != null && line.width > 0) {
+                cb.saveState();
+                cb.setLineWidth(0.3f);
+                cb.moveTo(x(line.x), y(lineY));
+                cb.lineTo(x(line.x + line.width), y(lineY));
+                cb.stroke();
+                cb.restoreState();
+            }
+            cursor += 1 / scaleY;
+        }
+        return true;
+    }
+
+    private Box productRow(double startX, double bandTop, double bandBottom, List<Box> exclusions) {
+        double rowLeft = startX, edge = right - 10;
+        for (Box exclusion : exclusions) {
+            if (exclusion.y < bandBottom && exclusion.y + exclusion.height > bandTop) {
+                if (exclusion.x < (left + right) / 2) rowLeft = Math.max(rowLeft, exclusion.x + exclusion.width);
+                else edge = Math.min(edge, exclusion.x);
+            }
+        }
+        return new Box(rowLeft, bandTop, edge - rowLeft, bandBottom - bandTop);
     }
 
     private List<Box> productRows(double x, double startY, double endY, List<Box> exclusions, double size) {
@@ -176,13 +243,7 @@ final class LabelPdfLayout {
         List<Box> boxes = new ArrayList<>();
         for (double bandTop = startY; bandTop + rowHeight <= endY + 0.001; bandTop += rowHeight) {
             double bandBottom = bandTop + rowHeight;
-            double edge = right - 10;
-            for (Box exclusion : exclusions) {
-                if (exclusion.y < bandBottom && exclusion.y + exclusion.height > bandTop) {
-                    edge = Math.min(edge, exclusion.x);
-                }
-            }
-            boxes.add(new Box(x, bandTop, edge - x, bandBottom - bandTop));
+            boxes.add(productRow(x, bandTop, bandBottom, exclusions));
         }
         return boxes;
     }

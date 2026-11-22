@@ -50,7 +50,22 @@ class LabelLayoutTest {
                 TextPosition footer = positions.get(positions.size() - 3);
                 LabelPdfLayout layout = new LabelPdfLayout(mode == 2 ? null : data,
                         yunda ? 607.65 : 606.04, yunda ? 960 : 1042.04);
-                assertEquals(layout.x(layout.left + 10), footer.getXDirAdj(), 0.1);
+                double countLeft = mode == 2 ? layout.x(layout.left + 10)
+                        : layout.imagePlacement(data.images.get(0)).x()
+                        + layout.imagePlacement(data.images.get(0)).width() + 4;
+                assertEquals(countLeft, footer.getXDirAdj(), 0.1);
+                List<Float> separators = separatorPositions(pdf);
+                assertEquals(3, separators.size(), "每条商品及备注结束后仅画一道横线");
+                String[] noteEnds = {"链", "口", "装"};
+                for (int group = 0; group < 3; group++) {
+                    String suffix = noteEnds[group];
+                    float lastBaseline = positions.stream().filter(p -> p.getUnicode().equals(suffix))
+                            .map(TextPosition::getYDirAdj).max(Float::compare).orElseThrow();
+                    assertTrue(separators.get(group) > lastBaseline,
+                            "横线必须位于该商品最后一行备注下面");
+                    assertTrue(separators.get(group) - lastBaseline < 5,
+                            "分隔线应紧跟商品整组内容");
+                }
                 assertTrue(footer.getYDirAdj() > LabelPdfLayout.PAGE_HEIGHT - 15,
                         "总件数必须在商品区域最下面一行");
                 assertTrue(footer.getYDirAdj() < LabelPdfLayout.PAGE_HEIGHT - 2,
@@ -120,6 +135,12 @@ class LabelLayoutTest {
                 assertTrue(baseline.get(firstNoteIndex) > baseline.get(firstNoteIndex - 1) + 1,
                         "备注必须从商品信息下一行开始，不能接在商品后面");
                 int boldLength = data.orderItems.get(0).toPdfLine().replaceAll("\\s+", "").length();
+                List<Float> separators = separatorPositions(pdf);
+                assertEquals(3, separators.size(), "商品自动换行也只能在整条结束后画一道横线");
+                assertTrue(separators.get(0) > baseline.get(boldLength - 1),
+                        "长商品及备注的横线必须位于最后一行下方");
+                assertTrue(separators.get(0) < baseline.get(boldLength),
+                        "横线必须位于下一条商品之前");
                 assertTrue(strokes.subList(0, boldLength).stream().allMatch(Boolean::booleanValue),
                         "多件商品及其换行备注均应加粗");
                 assertTrue(strokes.subList(boldLength, strokes.size()).stream().noneMatch(Boolean::booleanValue),
@@ -248,13 +269,13 @@ class LabelLayoutTest {
                             * Math.min(layout.scaleX, layout.scaleY) + 0.01,
                             "收件信息应恢复原模板字号");
                 }
-                // 商品信息占用二维码上方及左侧空间，任何文字都不能进入二维码。
+                // 商品信息占用二维码上方及右侧空间，任何文字都不能进入二维码。
                 LabelPdfLayout.ImagePlacement qr = layout.imagePlacement(data.images.get(0));
                 double qrLeft = qr.x(), qrRight = qr.x() + qr.width();
                 double qrTop = LabelPdfLayout.PAGE_HEIGHT - qr.y() - qr.height();
                 double qrBottom = LabelPdfLayout.PAGE_HEIGHT - qr.y();
                 assertEquals(1.5 * LabelPdfLayout.PT_PER_MM, qr.y(), 0.01);
-                assertEquals(1.5 * LabelPdfLayout.PT_PER_MM, LabelPdfLayout.PAGE_WIDTH - qrRight, 0.01);
+                assertEquals(1.5 * LabelPdfLayout.PT_PER_MM, qrLeft, 0.01);
                 for (TextPosition p : positions) {
                     assertFalse(p.getXDirAdj() < qrRight && p.getXDirAdj() + p.getWidthDirAdj() > qrLeft
                             && p.getYDirAdj() > qrTop && p.getYDirAdj() - p.getHeightDir() < qrBottom,
@@ -301,7 +322,9 @@ class LabelLayoutTest {
                     "请不要折叠领口"));
         }
         data.productInfo = data.getProductInfoForPdf();
-        BufferedImage qr = new BufferedImage(100, 100, BufferedImage.TYPE_BYTE_BINARY);
+        BufferedImage qr = com.google.zxing.client.j2se.MatrixToImageWriter.toBufferedImage(
+                new com.google.zxing.qrcode.QRCodeWriter().encode("label-layout-test",
+                        com.google.zxing.BarcodeFormat.QR_CODE, 160, 160));
         ByteArrayOutputStream bytes = new ByteArrayOutputStream();
         ImageIO.write(qr, "png", bytes);
         WaybillData.ImageInfo image = new WaybillData.ImageInfo();
@@ -309,6 +332,25 @@ class LabelLayoutTest {
         image.left = 455; image.top = 820; image.width = 130; image.height = 130;
         data.images.add(image);
         return data;
+    }
+
+    private static List<Float> separatorPositions(PDDocument document) throws Exception {
+        PDFStreamParser parser = new PDFStreamParser(document.getPage(0));
+        parser.parse();
+        List<Float> result = new ArrayList<>();
+        List<Object> operands = new ArrayList<>();
+        float lineWidth = 0;
+        for (Object token : parser.getTokens()) {
+            if (token instanceof Operator op) {
+                if (op.getName().equals("w") && !operands.isEmpty()) {
+                    lineWidth = ((COSNumber) operands.get(0)).floatValue();
+                } else if (op.getName().equals("l") && Math.abs(lineWidth - 0.3f) < 0.001) {
+                    result.add(LabelPdfLayout.PAGE_HEIGHT - ((COSNumber) operands.get(1)).floatValue());
+                }
+                operands.clear();
+            } else operands.add(token);
+        }
+        return result;
     }
 
     private static void addLine(WaybillData data, double x, double y, double width, double height) {
