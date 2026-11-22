@@ -157,9 +157,17 @@ final class LabelPdfLayout {
                 }
             }
         }
-        flow(cb, font, value, size -> productRows(x, startY, endY, exclusions, size),
-                9.5f, 6.5f, com.itextpdf.text.Element.ALIGN_LEFT, false,
+        Long quantity = data == null ? null : data.getTotalQuantityForPdf();
+        // 商品区域最底下一行固定留给总件数，避免长备注把总数顶到页外。
+        double footerTop = endY - 11 / scaleY;
+        double contentEndY = quantity == null ? endY : footerTop - 1 / scaleY;
+        flow(cb, font, value, size -> productRows(x, startY, contentEndY, exclusions, size),
+                9.5f, quantity == null ? 6.5f : 6f, com.itextpdf.text.Element.ALIGN_LEFT, false,
                 data == null ? null : data.getProductLinesForPdf());
+        if (quantity != null) {
+            flow(cb, font, "共" + quantity + "件", productRows(x, footerTop, endY, exclusions, 9.5),
+                    9.5f, 9.5f, com.itextpdf.text.Element.ALIGN_LEFT, false);
+        }
     }
 
     private List<Box> productRows(double x, double startY, double endY, List<Box> exclusions, double size) {

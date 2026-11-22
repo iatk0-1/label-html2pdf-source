@@ -83,6 +83,20 @@ public class WaybillData {
 
     public record PdfProductLine(String text, boolean bold) {}
 
+    /** 仅使用接口实际发货件数，明细不完整时不猜测总数。 */
+    public Long getTotalQuantityForPdf() {
+        if (orderItems == null || orderItems.isEmpty()) return null;
+        long total = 0;
+        boolean found = false;
+        for (WaybillOrderItem item : orderItems) {
+            if (item == null) continue;
+            if (item.qty() == null || item.qty() <= 0) return null;
+            total += item.qty();
+            found = true;
+        }
+        return found ? total : null;
+    }
+
     /** 按商品明细携带字重，避免展平为字符串后丢失件数信息。 */
     public List<PdfProductLine> getProductLinesForPdf() {
         List<PdfProductLine> lines = new ArrayList<>();

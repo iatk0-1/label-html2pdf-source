@@ -22,6 +22,66 @@ import static org.junit.jupiter.api.Assertions.*;
 class LabelLayoutTest {
     @TempDir Path directory;
 
+    @Test void totalQuantityOccupiesTheLastLeftAlignedRowInAllRenderingPaths() throws Exception {
+        for (int mode = 0; mode < 3; mode++) {
+            boolean yunda = mode == 1;
+            WaybillData data = fixture(yunda ? 607.65 : 606.04, yunda ? 960 : 1042.04, yunda);
+            data.orderItems = List.of(
+                    new WaybillOrderItem(1L, 1L, "A012", "加厚外套 / 黑色 / XL * 2", 2, "请检查拉链"),
+                    new WaybillOrderItem(2L, 2L, "A013", "纯棉长袖 / 白色 / M * 1", 1, "请不要折叠领口"),
+                    new WaybillOrderItem(3L, 3L, "A014", "围巾 / 藏青色 / 均码 * 6", 6, "分开包装"));
+            data.productInfo = data.getProductInfoForPdf();
+            Path output = directory.resolve("total-" + (mode == 2 ? "fallback" : yunda ? "yunda" : "zto") + ".pdf");
+            if (mode == 2) {
+                Path html = directory.resolve("total-fallback.html");
+                Files.writeString(html, "<html><body></body></html>");
+                new PdfGenerator().generateFromHtml(html.toFile(), output.toFile(), data.productInfo, data.orderItems);
+            } else if (yunda) new YundaPdfGenerator().generate(data, output.toFile());
+            else new PdfGenerator().generate(data, output.toFile());
+            try (PDDocument pdf = PDDocument.load(output.toFile())) {
+                List<TextPosition> positions = new ArrayList<>();
+                PDFTextStripper stripper = new PDFTextStripper() {
+                    @Override protected void processTextPosition(TextPosition text) {
+                        positions.add(text);
+                        super.processTextPosition(text);
+                    }
+                };
+                assertTrue(stripper.getText(pdf).replaceAll("\\s+", "").endsWith("共9件"));
+                TextPosition footer = positions.get(positions.size() - 3);
+                LabelPdfLayout layout = new LabelPdfLayout(mode == 2 ? null : data,
+                        yunda ? 607.65 : 606.04, yunda ? 960 : 1042.04);
+                assertEquals(layout.x(layout.left + 10), footer.getXDirAdj(), 0.1);
+                assertTrue(footer.getYDirAdj() > LabelPdfLayout.PAGE_HEIGHT - 15,
+                        "总件数必须在商品区域最下面一行");
+                assertTrue(footer.getYDirAdj() < LabelPdfLayout.PAGE_HEIGHT - 2,
+                        "总件数应与底框保留间距");
+                assertTrue(positions.subList(0, positions.size() - 3).stream()
+                        .allMatch(text -> text.getYDirAdj() < footer.getYDirAdj() - 2),
+                        "商品、换行备注与最后的总件数不得重叠");
+            }
+            String previewDir = System.getProperty("label.previewDir");
+            if (previewDir != null) {
+                Path preview = Path.of(previewDir);
+                Files.createDirectories(preview);
+                Files.copy(output, preview.resolve(output.getFileName()), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            }
+        }
+    }
+
+    @Test void quantityUsesShippedItemCountsAndNeverGuessesFromProductText() {
+        WaybillData data = new WaybillData();
+        data.orderItems = List.of(new WaybillOrderItem(1L, 1L, "A001", "商品 * 999", 2, null),
+                new WaybillOrderItem(1L, 2L, "A001", "另一个商品", 3, null));
+        assertEquals(5L, data.getTotalQuantityForPdf());
+        data.orderItems = List.of(new WaybillOrderItem(1L, 1L, "A001", "商品 * 999", 1, null));
+        assertEquals(1L, data.getTotalQuantityForPdf());
+        data.orderItems = List.of(new WaybillOrderItem(1L, 1L, "A001", "商品 * 999", null, null));
+        assertNull(data.getTotalQuantityForPdf());
+        data.orderItems = List.of();
+        data.productInfo = "旧商品 * 999";
+        assertNull(data.getTotalQuantityForPdf());
+    }
+
     @Test void multiQuantityProductAndWrappedRemarksAreBoldInBothTemplates() throws Exception {
         for (int mode = 0; mode < 3; mode++) {
             boolean yunda = mode == 1;
